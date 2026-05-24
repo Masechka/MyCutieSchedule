@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "329710808500",
+    "project_id": "my-cutie-schedule",
+    "storage_bucket": "my-cutie-schedule.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:329710808500:android:c8a3fa6c4f65a6e39f16e1",
+        "android_client_info": {
+          "package_name": "com.example.mycutieschedule"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvWGp3yEo_BXTDziMt9eBD6lroc3mAuMo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
