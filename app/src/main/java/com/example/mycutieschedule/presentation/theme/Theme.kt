@@ -168,7 +168,11 @@ fun MyCutieScheduleTheme(
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val extendedColors = if (darkTheme) DarkExtendedColors else LightExtendedColors
 
-    CompositionLocalProvider(LocalExtendedColors provides extendedColors) {
+    CompositionLocalProvider(
+        LocalExtendedColors provides extendedColors,
+        LocalSpacing provides Spacing(),
+        LocalElevation provides Elevation(),
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography  = CutieTypography,
