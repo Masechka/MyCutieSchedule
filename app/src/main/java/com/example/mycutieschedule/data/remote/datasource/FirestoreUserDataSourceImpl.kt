@@ -21,6 +21,7 @@ class FirestoreUserDataSourceImpl @Inject constructor(
     override suspend fun saveUser(user: UserDto): Result<Unit> = runCatching {
         // set() overwrites the entire document — safe for initial creation.
         userDoc(user.id).set(user).await()
+        Unit
     }.toDomainResult()
 
     override suspend fun getUser(userId: String): Result<UserDto?> = runCatching {
@@ -36,5 +37,6 @@ class FirestoreUserDataSourceImpl @Inject constructor(
             userDoc(userId)
                 .update(FirestoreCollections.UserFields.SHARE_CODE, value)
                 .await()
+            Unit
         }.toDomainResult()
 }

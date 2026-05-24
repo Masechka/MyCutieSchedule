@@ -33,6 +33,7 @@ class FirestoreShareDataSourceImpl @Inject constructor(
             createdAt = System.currentTimeMillis(),
         )
         shareDoc(shareCode).set(dto).await()
+        Unit
     }.toDomainResult()
 
     override suspend fun getByShareCode(shareCode: String): Result<SharedScheduleDto?> =
@@ -45,5 +46,6 @@ class FirestoreShareDataSourceImpl @Inject constructor(
     override suspend fun deleteShareDocument(userId: String, shareCode: String): Result<Unit> =
         runCatching {
             shareDoc(shareCode).delete().await()
+            Unit
         }.toDomainResult()
 }

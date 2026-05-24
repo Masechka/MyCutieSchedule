@@ -60,6 +60,7 @@ class FirestoreEventDataSourceImpl @Inject constructor(
                 .document(event.id)
                 .set(event)
                 .await()
+            Unit  // Task<Void>.await() returns Void?, not Unit — explicit Unit fixes the type
         }.toDomainResult()
 
     override suspend fun deleteEvent(eventId: String, userId: String): Result<Unit> =
@@ -68,5 +69,6 @@ class FirestoreEventDataSourceImpl @Inject constructor(
                 .document(eventId)
                 .delete()
                 .await()
+            Unit
         }.toDomainResult()
 }
