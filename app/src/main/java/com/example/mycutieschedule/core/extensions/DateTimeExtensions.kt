@@ -1,9 +1,11 @@
 package com.example.mycutieschedule.core.extensions
 
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
@@ -51,6 +53,25 @@ fun LocalDateTime.toEventDisplay(locale: Locale = Locale.getDefault()): String =
 /** Duration in minutes between two LocalDateTimes. Negative if end is before start. */
 fun LocalDateTime.minutesUntil(end: LocalDateTime): Long =
     java.time.Duration.between(this, end).toMinutes()
+
+// ── YearMonth ─────────────────────────────────────────────────────────────────
+
+// ── Epoch conversion — used by Room entity mappers ────────────────────────────
+// All datetimes are stored as UTC epoch milliseconds for consistent cross-device sync.
+
+/** Converts [LocalDateTime] to epoch milliseconds using UTC offset. */
+fun LocalDateTime.toEpochMilli(): Long =
+    toInstant(ZoneOffset.UTC).toEpochMilli()
+
+/** Restores a [LocalDateTime] from epoch milliseconds using UTC offset. */
+fun Long.toLocalDateTime(): LocalDateTime =
+    LocalDateTime.ofInstant(Instant.ofEpochMilli(this), ZoneOffset.UTC)
+
+/**
+ * Restores a [LocalDate] from an epoch day value.
+ * Complement of the stdlib's [LocalDate.toEpochDay].
+ */
+fun Long.toLocalDate(): LocalDate = LocalDate.ofEpochDay(this)
 
 // ── YearMonth ─────────────────────────────────────────────────────────────────
 

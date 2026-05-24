@@ -43,3 +43,18 @@ fun <T> Result<T>.getOrNull(): T? = if (this is Result.Success) data else null
 
 fun <T> Result<T>.isSuccess(): Boolean = this is Result.Success
 fun <T> Result<T>.isError(): Boolean   = this is Result.Error
+
+/**
+ * Bridges Kotlin's built-in [kotlin.Result] to our domain [Result].
+ *
+ * Typical use in repository implementations:
+ * ```
+ * override suspend fun addEvent(event: Event): Result<Unit> = runCatching {
+ *     eventDao.insert(event.toEntity())
+ * }.toDomainResult()
+ * ```
+ */
+fun <T> kotlin.Result<T>.toDomainResult(): Result<T> = fold(
+    onSuccess = { Result.Success(it) },
+    onFailure = { Result.Error(it) },
+)

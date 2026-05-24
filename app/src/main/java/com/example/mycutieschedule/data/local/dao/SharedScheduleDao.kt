@@ -1,0 +1,32 @@
+package com.example.mycutieschedule.data.local.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface SharedScheduleDao {
+
+    /** Live stream of all shared schedules accessed by [viewerId], newest first. */
+    @Query("""
+        SELECT * FROM shared_schedule_table
+        WHERE viewer_id = :viewerId
+        ORDER BY accessed_at DESC
+    """)
+    fun observeAll(viewerId: String): Flow<List<SharedScheduleEntity>>
+
+    @Query("SELECT * FROM shared_schedule_table WHERE id = :id LIMIT 1")
+    suspend fun findById(id: String): SharedScheduleEntity?
+
+    @Query("SELECT * FROM shared_schedule_table WHERE share_code = :shareCode AND viewer_id = :viewerId LIMIT 1")
+    suspend fun findByShareCode(shareCode: String, viewerId: String): SharedScheduleEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(schedule: SharedScheduleEntity)
+
+    @Query("DELETE FROM shared_schedule_table WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
