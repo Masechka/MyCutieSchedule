@@ -101,6 +101,13 @@ interface EventDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(event: EventEntity)
 
+    /**
+     * Bulk upsert — used by [EventSyncManager] to apply a full Firestore snapshot.
+     * REPLACE strategy makes this idempotent: re-inserting an unchanged event is a no-op.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(events: List<EventEntity>)
+
     @Update
     suspend fun update(event: EventEntity)
 
