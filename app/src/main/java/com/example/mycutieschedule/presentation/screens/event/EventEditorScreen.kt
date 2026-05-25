@@ -3,9 +3,11 @@ package com.example.mycutieschedule.presentation.screens.event
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,15 +16,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -86,35 +87,38 @@ private val TimeFmt = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun LocalDateTime.fmtDate(): String = DateFmt.format(toLocalDate())
 private fun LocalDateTime.fmtTime(): String = TimeFmt.format(this)
+private fun LocalDate.fmtDate(): String = DateFmt.format(this)
 
 // ── Reminder options ──────────────────────────────────────────────────────────
 
 private val ReminderOptions: List<Pair<Reminder?, String>> = listOf(
-    null                                    to "Без напоминания",
-    Reminder(minutesBefore = 0)             to "В момент события",
-    Reminder(minutesBefore = 5)             to "За 5 минут",
-    Reminder(minutesBefore = 10)            to "За 10 минут",
-    Reminder(minutesBefore = 15)            to "За 15 минут",
-    Reminder(minutesBefore = 30)            to "За 30 минут",
-    Reminder(minutesBefore = 60)            to "За 1 час",
-    Reminder(minutesBefore = 120)           to "За 2 часа",
-    Reminder(minutesBefore = 1440)          to "За 1 день",
+    null                          to "Без напоминания",
+    Reminder(minutesBefore = 0)   to "В момент события",
+    Reminder(minutesBefore = 5)   to "За 5 минут",
+    Reminder(minutesBefore = 10)  to "За 10 минут",
+    Reminder(minutesBefore = 15)  to "За 15 минут",
+    Reminder(minutesBefore = 30)  to "За 30 минут",
+    Reminder(minutesBefore = 60)  to "За 1 час",
+    Reminder(minutesBefore = 120) to "За 2 часа",
+    Reminder(minutesBefore = 1440) to "За 1 день",
 )
 
 private fun Reminder?.label(): String =
-    ReminderOptions.firstOrNull { it.first?.minutesBefore == this?.minutesBefore && it.first?.type == this?.type }?.second
+    ReminderOptions
+        .firstOrNull { it.first?.minutesBefore == this?.minutesBefore && it.first?.type == this?.type }
+        ?.second
         ?: ReminderOptions.firstOrNull { it.first == null && this == null }?.second
         ?: "Без напоминания"
 
-// ── Recurrence type options ───────────────────────────────────────────────────
+// ── Recurrence type options (YEARLY excluded from UI — legacy only) ───────────
 
 private val RecurrenceOptions: List<Pair<RecurrenceType?, String>> = listOf(
-    null                         to "Без повторения",
-    RecurrenceType.DAILY         to "Ежедневно",
-    RecurrenceType.WEEKLY        to "Еженедельно",
-    RecurrenceType.MONTHLY       to "Ежемесячно",
-    RecurrenceType.YEARLY        to "Ежегодно",
-    RecurrenceType.CUSTOM_DAYS   to "Выбрать дни недели",
+    null                          to "Без повторения",
+    RecurrenceType.DAILY          to "Ежедневно",
+    RecurrenceType.WEEKLY         to "Еженедельно",
+    RecurrenceType.MONTHLY        to "Ежемесячно",
+    RecurrenceType.CUSTOM_DAYS    to "Выбрать дни недели",
+    RecurrenceType.CUSTOM_DATES   to "Выбрать даты",
 )
 
 private fun RecurrenceType?.label(): String =
@@ -179,7 +183,9 @@ fun EventEditorScreen(
     var reminderDialogOpen           by remember { mutableStateOf(false) }
     var recurrenceDialogOpen         by remember { mutableStateOf(false) }
     var recurrenceEndDateDialogOpen  by remember { mutableStateOf(false) }
+    var customDatePickerOpen         by remember { mutableStateOf(false) }
     var deleteConfirmOpen            by remember { mutableStateOf(false) }
+    var deleteRecurrenceDialogOpen   by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -196,11 +202,14 @@ fun EventEditorScreen(
                 actions = {
                     // Delete button — only visible when editing an existing event
                     if (viewModel.isEditing) {
-                        IconButton(onClick = { deleteConfirmOpen = true }) {
+                        IconButton(onClick = {
+                            if (uiState.isRecurringEvent) deleteRecurrenceDialogOpen = true
+                            else deleteConfirmOpen = true
+                        }) {
                             Icon(
-                                imageVector   = Icons.Default.Delete,
+                                imageVector        = Icons.Default.Delete,
                                 contentDescription = "Удалить",
-                                tint          = MaterialTheme.colorScheme.error,
+                                tint               = MaterialTheme.colorScheme.error,
                             )
                         }
                     }
@@ -264,7 +273,7 @@ fun EventEditorScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // ── Description / notes field ──────────────────────────────────
+            // ── Description / notes field ─────────────────────────────────────
             OutlinedTextField(
                 value           = uiState.description,
                 onValueChange   = viewModel::onDescriptionChange,
@@ -307,7 +316,7 @@ fun EventEditorScreen(
 
             // ── End date / time ───────────────────────────────────────────────
             ListItem(
-                leadingContent = { Spacer(Modifier.size(24.dp)) },  // aligns with icon above
+                leadingContent  = { Spacer(Modifier.size(24.dp)) },
                 headlineContent = {
                     Text("Конец", style = MaterialTheme.typography.bodyMedium)
                 },
@@ -324,9 +333,9 @@ fun EventEditorScreen(
             // Date-range validation error
             uiState.dateRangeError?.let { err ->
                 Text(
-                    text  = err,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    text     = err,
+                    style    = MaterialTheme.typography.bodySmall,
+                    color    = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
@@ -376,7 +385,7 @@ fun EventEditorScreen(
                 modifier = Modifier.clickable { reminderDialogOpen = true },
             )
 
-            // ── Recurrence ────────────────────────────────────────────────────
+            // ── Recurrence type picker ────────────────────────────────────────
             ListItem(
                 leadingContent = {
                     Icon(
@@ -396,8 +405,51 @@ fun EventEditorScreen(
                 modifier = Modifier.clickable { recurrenceDialogOpen = true },
             )
 
-            // Day-of-week chips — visible for WEEKLY and CUSTOM_DAYS recurrence types
             val recurrenceType = uiState.recurrence?.type
+
+            // ── Interval selector — WEEKLY only ───────────────────────────────
+            if (recurrenceType == RecurrenceType.WEEKLY) {
+                val interval = uiState.recurrence?.intervalWeeks ?: 1
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 56.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
+                ) {
+                    Text(
+                        text  = "Каждые",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(
+                        onClick        = { viewModel.onRecurrenceIntervalChange(interval - 1) },
+                        enabled        = interval > 1,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier       = Modifier.height(36.dp),
+                    ) {
+                        Text("−", style = MaterialTheme.typography.titleMedium)
+                    }
+                    Text(
+                        text  = "$interval",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    TextButton(
+                        onClick        = { viewModel.onRecurrenceIntervalChange(interval + 1) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier       = Modifier.height(36.dp),
+                    ) {
+                        Text("+", style = MaterialTheme.typography.titleMedium)
+                    }
+                    Text(
+                        text  = "нед.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            // ── Day-of-week chips — WEEKLY and CUSTOM_DAYS ────────────────────
             if (recurrenceType == RecurrenceType.WEEKLY || recurrenceType == RecurrenceType.CUSTOM_DAYS) {
                 val selectedDays = uiState.recurrence?.repeatDays ?: emptySet()
                 Row(
@@ -417,18 +469,64 @@ fun EventEditorScreen(
                 }
             }
 
-            // End-date row — visible whenever any recurrence is active
+            // ── Custom dates list — CUSTOM_DATES ─────────────────────────────
+            if (recurrenceType == RecurrenceType.CUSTOM_DATES) {
+                val customDates = uiState.recurrence?.customDates ?: emptyList()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 56.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                ) {
+                    customDates.forEach { date ->
+                        Row(
+                            modifier              = Modifier.fillMaxWidth(),
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text  = date.fmtDate(),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            IconButton(
+                                onClick  = { viewModel.onCustomDateRemoved(date) },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    imageVector        = Icons.Default.Close,
+                                    contentDescription = "Убрать дату",
+                                    modifier           = Modifier.size(18.dp),
+                                    tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    TextButton(
+                        onClick        = { customDatePickerOpen = true },
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                    ) {
+                        Icon(
+                            imageVector        = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier           = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("Добавить дату")
+                    }
+                }
+            }
+
+            // ── End-date row — visible whenever any recurrence is active ──────
             val activeRecurrence = uiState.recurrence
             if (activeRecurrence != null) {
                 val endDate = activeRecurrence.endDate
                 ListItem(
-                    leadingContent = { Spacer(Modifier.size(24.dp)) },
+                    leadingContent  = { Spacer(Modifier.size(24.dp)) },
                     headlineContent = { Text("Повторять до") },
                     trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (endDate != null) {
                                 TextButton(
-                                    onClick = { viewModel.onRecurrenceEndDateChange(null) },
+                                    onClick        = { viewModel.onRecurrenceEndDateChange(null) },
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                                 ) {
                                     Text(
@@ -439,11 +537,11 @@ fun EventEditorScreen(
                                 }
                             }
                             TextButton(
-                                onClick = { recurrenceEndDateDialogOpen = true },
+                                onClick        = { recurrenceEndDateDialogOpen = true },
                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                             ) {
                                 Text(
-                                    text  = endDate?.format(DateFmt) ?: "Без конца",
+                                    text  = endDate?.fmtDate() ?: "Без конца",
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                             }
@@ -458,7 +556,7 @@ fun EventEditorScreen(
         }
     }
 
-    // ── Dialogs (rendered outside the scaffold content to avoid clipping) ─────
+    // ── Dialogs (rendered outside Scaffold content to avoid clipping) ─────────
 
     if (startDateDialogOpen) {
         EventDatePickerDialog(
@@ -488,11 +586,11 @@ fun EventEditorScreen(
 
     if (startTimeDialogOpen) {
         EventTimePickerDialog(
-            title        = "Время начала",
-            initialHour  = uiState.startDateTime.hour,
+            title         = "Время начала",
+            initialHour   = uiState.startDateTime.hour,
             initialMinute = uiState.startDateTime.minute,
-            onDismiss    = { startTimeDialogOpen = false },
-            onConfirm    = { hour, minute ->
+            onDismiss     = { startTimeDialogOpen = false },
+            onConfirm     = { hour, minute ->
                 viewModel.onStartDateTimeChange(
                     uiState.startDateTime.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
                 )
@@ -503,11 +601,11 @@ fun EventEditorScreen(
 
     if (endTimeDialogOpen) {
         EventTimePickerDialog(
-            title        = "Время окончания",
-            initialHour  = uiState.endDateTime.hour,
+            title         = "Время окончания",
+            initialHour   = uiState.endDateTime.hour,
             initialMinute = uiState.endDateTime.minute,
-            onDismiss    = { endTimeDialogOpen = false },
-            onConfirm    = { hour, minute ->
+            onDismiss     = { endTimeDialogOpen = false },
+            onConfirm     = { hour, minute ->
                 viewModel.onEndDateTimeChange(
                     uiState.endDateTime.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
                 )
@@ -549,21 +647,64 @@ fun EventEditorScreen(
         )
     }
 
+    if (customDatePickerOpen) {
+        EventDatePickerDialog(
+            initialDate = LocalDate.now(),
+            onDismiss   = { customDatePickerOpen = false },
+            onConfirm   = { date ->
+                viewModel.onCustomDateAdded(date)
+                customDatePickerOpen = false
+            },
+        )
+    }
+
+    // ── Plain (non-recurring) delete confirmation ─────────────────────────────
     if (deleteConfirmOpen) {
         AlertDialog(
             onDismissRequest = { deleteConfirmOpen = false },
-            title   = { Text("Удалить событие?") },
-            text    = { Text("Это действие нельзя отменить.") },
+            title            = { Text("Удалить событие?") },
+            text             = { Text("Это действие нельзя отменить.") },
             confirmButton = {
-                TextButton(
-                    onClick = { deleteConfirmOpen = false; viewModel.deleteEvent() },
-                    // Red-ish tint for a destructive action
-                ) {
+                TextButton(onClick = { deleteConfirmOpen = false; viewModel.deleteThisOnly() }) {
                     Text("Удалить", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deleteConfirmOpen = false }) { Text("Отмена") }
+            },
+        )
+    }
+
+    // ── Recurring-event delete dialog ─────────────────────────────────────────
+    if (deleteRecurrenceDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { deleteRecurrenceDialogOpen = false },
+            title            = { Text("Удалить повторяющееся событие?") },
+            text = {
+                Column {
+                    TextButton(
+                        onClick  = { deleteRecurrenceDialogOpen = false; viewModel.deleteThisOnly() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text  = "Только это событие",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    TextButton(
+                        onClick  = { deleteRecurrenceDialogOpen = false; viewModel.deleteThisAndFollowing() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text  = "Это и все последующие",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { deleteRecurrenceDialogOpen = false }) { Text("Отмена") }
             },
         )
     }
@@ -583,7 +724,10 @@ private fun DateTimeButtons(
     onTimeClick: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onDateClick, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+        TextButton(
+            onClick        = onDateClick,
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+        ) {
             Text(dateText, style = MaterialTheme.typography.bodyMedium)
         }
         Text(
@@ -591,7 +735,10 @@ private fun DateTimeButtons(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        TextButton(onClick = onTimeClick, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+        TextButton(
+            onClick        = onTimeClick,
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+        ) {
             Text(timeText, style = MaterialTheme.typography.bodyMedium)
         }
     }
@@ -681,8 +828,8 @@ private fun EventTimePickerDialog(
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title   = { Text(title) },
-        text    = {
+        title            = { Text(title) },
+        text = {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
                 TimePicker(state = state)
             }

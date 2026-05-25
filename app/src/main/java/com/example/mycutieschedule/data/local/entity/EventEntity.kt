@@ -76,6 +76,36 @@ data class EventEntity(
     @ColumnInfo(name = "recurrence_count")
     val recurrenceCount: Int?,
 
+    /**
+     * Week step for WEEKLY recurrence (1 = every week, 2 = biweekly, …).
+     * Null means 1 (default — stored as NULL to save space and maintain backward compat).
+     */
+    @ColumnInfo(name = "recurrence_interval_weeks")
+    val recurrenceIntervalWeeks: Int?,
+
+    /**
+     * Comma-separated epoch days (LocalDate.toEpochDay()) for CUSTOM_DATES recurrence.
+     * E.g. "20222,20227,20241"
+     */
+    @ColumnInfo(name = "recurrence_custom_dates")
+    val recurrenceCustomDates: String?,
+
+    // ── Recurrence chain ──────────────────────────────────────────────────────
+
+    /**
+     * Shared UUID linking every event in the same recurrence chain (master + all generated copies).
+     * Null for one-off events.
+     */
+    @ColumnInfo(name = "recurrence_group_id")
+    val recurrenceGroupId: String?,
+
+    /**
+     * True when this event was auto-generated from a master recurring event.
+     * The master itself has this as 0 (false).
+     */
+    @ColumnInfo(name = "is_recurrence_generated", defaultValue = "0")
+    val isRecurrenceGenerated: Boolean,
+
     // ── Ownership & import ────────────────────────────────────────────────────
 
     @ColumnInfo(name = "owner_id")

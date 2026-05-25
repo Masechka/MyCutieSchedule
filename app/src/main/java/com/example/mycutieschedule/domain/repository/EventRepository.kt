@@ -18,20 +18,13 @@ interface EventRepository {
      * Returns a live stream of events whose start or end overlaps [startDateTime]..[endDateTime].
      * Room re-emits whenever the underlying data changes.
      *
-     * @param userId Filter to only this user's own events (excludes imported).
-     *               Pass null to include imported events as well.
+     * @param userId Filter to only this user's own events.
      */
     fun observeEventsBetween(
         startDateTime: LocalDateTime,
         endDateTime: LocalDateTime,
         userId: String,
     ): Flow<List<Event>>
-
-    /**
-     * Returns a live stream of ALL events that have a recurrence rule, independent of date.
-     * The caller uses [RecurrenceExpander] to project occurrences into the desired range.
-     */
-    fun observeRecurringMasters(userId: String): Flow<List<Event>>
 
     /** Returns a single event by ID, or null if not found. */
     suspend fun getEventById(eventId: String): Event?
@@ -43,6 +36,12 @@ interface EventRepository {
     suspend fun addEvent(event: Event): Result<Unit>
 
     /**
+     * Batch-inserts a list of events. Used to persist generated recurring occurrences
+     * in a single Room transaction followed by best-effort Firestore writes.
+     */
+    suspend fun addAllEvents(events: List<Event>): Result<Unit>
+
+    /**
      * Updates an existing event. Matched by [Event.id].
      * Sets [Event.updatedAt] to now before persisting.
      */
@@ -52,4 +51,13 @@ interface EventRepository {
      * Deletes an event by ID from both Room and Firestore.
      */
     suspend fun deleteEvent(eventId: String): Result<Unit>
+
+    /**
+     * Deletes all events in a recurrence chain whose [Event.startDateTime] is on or after
+     * [fromStart]. Used for "delete this and following" behavior.
+     *
+     * @param recurrenceGroupId The shared group ID of the chain.
+     * @param fromStart         Inclusive lower bound — the tapped occurrence's start time.
+     */
+    suspend fun deleteEventAndFollowing(recurrenceGroupId: String, fromStart: LocalDateTime): Result<Unit>
 }

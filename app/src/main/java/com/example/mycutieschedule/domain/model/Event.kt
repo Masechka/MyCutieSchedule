@@ -21,11 +21,15 @@ import java.time.LocalDateTime
  * @param color            One of the predefined pink shades.
  * @param reminder         Optional notification reminder before the event.
  * @param recurrence       Optional repeat rule. Null = single occurrence.
- * @param ownerId          Firebase Auth UID of the event creator.
- * @param isImported       True if this event was copied from another user's schedule.
- * @param sourceScheduleId Share code / schedule ID this was imported from (if [isImported]).
- * @param createdAt        Creation timestamp.
- * @param updatedAt        Last update timestamp — used for Firestore conflict resolution.
+ * @param ownerId                 Firebase Auth UID of the event creator.
+ * @param isImported              True if this event was copied from another user's schedule.
+ * @param sourceScheduleId        Share code / schedule ID this was imported from (if [isImported]).
+ * @param recurrenceGroupId       Shared ID linking all events in a recurrence chain (master + generated).
+ *                                Null for one-off events that don't repeat.
+ * @param isRecurrenceGenerated   True when this event was automatically generated from a master recurring event.
+ *                                The master itself has this set to false.
+ * @param createdAt               Creation timestamp.
+ * @param updatedAt               Last update timestamp — used for Firestore conflict resolution.
  */
 data class Event(
     val id: String = "",
@@ -39,6 +43,8 @@ data class Event(
     val ownerId: String,
     val isImported: Boolean = false,
     val sourceScheduleId: String? = null,
+    val recurrenceGroupId: String? = null,
+    val isRecurrenceGenerated: Boolean = false,
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val updatedAt: LocalDateTime = LocalDateTime.now(),
 )

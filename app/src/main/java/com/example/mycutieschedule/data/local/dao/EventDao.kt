@@ -87,18 +87,30 @@ interface EventDao {
     """)
     fun observeImportedEvents(userId: String): Flow<List<EventEntity>>
 
+    // ── Recurrence chain queries ──────────────────────────────────────────────
+
     /**
-     * Returns all events that carry a recurrence rule, regardless of their start date.
-     * Used together with [RecurrenceExpander] to generate virtual occurrences for any
-     * requested date range without duplicating rows in the database.
+     * Returns all events in a recurrence chain whose start is on or after [fromStartMilli].
+     * Used to collect the IDs/ownerIds needed for Firestore deletion before bulk-deleting
+     * from Room.
      */
     @Query("""
         SELECT * FROM event_table
-        WHERE owner_id = :userId
-          AND recurrence_type IS NOT NULL
-        ORDER BY start_datetime ASC
+        WHERE recurrence_group_id = :groupId
+          AND start_datetime >= :fromStartMilli
     """)
-    fun observeRecurringMasters(userId: String): Flow<List<EventEntity>>
+    suspend fun findByGroupIdFromDate(groupId: String, fromStartMilli: Long): List<EventEntity>
+
+    /**
+     * Bulk-deletes all events in a recurrence chain starting from [fromStartMilli].
+     * Call [findByGroupIdFromDate] first to obtain IDs for Firestore cleanup.
+     */
+    @Query("""
+        DELETE FROM event_table
+        WHERE recurrence_group_id = :groupId
+          AND start_datetime >= :fromStartMilli
+    """)
+    suspend fun deleteByGroupIdFromDate(groupId: String, fromStartMilli: Long)
 
     // ── Single-item lookup ────────────────────────────────────────────────────
 

@@ -41,6 +41,14 @@ data class EventDto(
     /** Epoch day via LocalDate.toEpochDay(). */
     val recurrenceEndDate: Long? = null,
     val recurrenceCount: Int? = null,
+    /** Week step for WEEKLY recurrence. Null = 1. */
+    val recurrenceIntervalWeeks: Int? = null,
+    /** Comma-separated epoch days for CUSTOM_DATES recurrence. */
+    val recurrenceCustomDates: String? = null,
+
+    // ── Recurrence chain ────────────────────────────────────────────────────────
+    val recurrenceGroupId: String? = null,
+    val isRecurrenceGenerated: Boolean = false,
 
     // ── Ownership ───────────────────────────────────────────────────────────────
     val ownerId: String = "",

@@ -11,35 +11,40 @@ import com.example.mycutieschedule.domain.model.RecurrenceType
 import com.example.mycutieschedule.domain.model.Reminder
 import com.example.mycutieschedule.domain.model.ReminderType
 import java.time.DayOfWeek
+import java.time.LocalDate
 
 // ── Entity → Domain ───────────────────────────────────────────────────────────
 
 fun EventEntity.toDomain(): Event = Event(
-    id                = id,
-    title             = title,
-    description       = description,
-    startDateTime     = startDatetime.toLocalDateTime(),
-    endDateTime       = endDatetime.toLocalDateTime(),
-    color             = EventColor.valueOf(color),
-    reminder          = buildReminder(reminderMinutesBefore, reminderType),
-    recurrence        = buildRecurrence(
+    id                     = id,
+    title                  = title,
+    description            = description,
+    startDateTime          = startDatetime.toLocalDateTime(),
+    endDateTime            = endDatetime.toLocalDateTime(),
+    color                  = EventColor.valueOf(color),
+    reminder               = buildReminder(reminderMinutesBefore, reminderType),
+    recurrence             = buildRecurrence(
         recurrenceType,
         recurrenceRepeatDays,
         recurrenceEndDate,
         recurrenceCount,
+        recurrenceIntervalWeeks,
+        recurrenceCustomDates,
     ),
-    ownerId           = ownerId,
-    isImported        = isImported,
-    sourceScheduleId  = sourceScheduleId,
-    createdAt         = createdAt.toLocalDateTime(),
-    updatedAt         = updatedAt.toLocalDateTime(),
+    ownerId                = ownerId,
+    isImported             = isImported,
+    sourceScheduleId       = sourceScheduleId,
+    recurrenceGroupId      = recurrenceGroupId,
+    isRecurrenceGenerated  = isRecurrenceGenerated,
+    createdAt              = createdAt.toLocalDateTime(),
+    updatedAt              = updatedAt.toLocalDateTime(),
 )
 
 private fun buildReminder(minutesBefore: Int?, typeName: String?): Reminder? {
     if (minutesBefore == null || typeName == null) return null
     return Reminder(
         minutesBefore = minutesBefore,
-        type = ReminderType.valueOf(typeName),
+        type          = ReminderType.valueOf(typeName),
     )
 }
 
@@ -48,18 +53,26 @@ private fun buildRecurrence(
     repeatDays: String?,
     endDateEpoch: Long?,
     count: Int?,
+    intervalWeeks: Int?,
+    customDates: String?,
 ): Recurrence? {
     if (typeName == null) return null
     return Recurrence(
-        type = RecurrenceType.valueOf(typeName),
-        repeatDays = repeatDays
+        type          = RecurrenceType.valueOf(typeName),
+        intervalWeeks = intervalWeeks ?: 1,
+        repeatDays    = repeatDays
             ?.split(",")
             ?.filter { it.isNotBlank() }
             ?.map { DayOfWeek.valueOf(it) }
             ?.toSet()
             ?: emptySet(),
-        endDate  = endDateEpoch?.toLocalDate(),
-        count    = count,
+        customDates   = customDates
+            ?.split(",")
+            ?.filter { it.isNotBlank() }
+            ?.map { LocalDate.ofEpochDay(it.trim().toLong()) }
+            ?: emptyList(),
+        endDate       = endDateEpoch?.toLocalDate(),
+        count         = count,
     )
 }
 
@@ -80,6 +93,12 @@ fun Event.toEntity(): EventEntity = EventEntity(
         ?.takeIf { it.isNotEmpty() },
     recurrenceEndDate       = recurrence?.endDate?.toEpochDay(),
     recurrenceCount         = recurrence?.count,
+    recurrenceIntervalWeeks = recurrence?.intervalWeeks?.takeIf { it > 1 },
+    recurrenceCustomDates   = recurrence?.customDates
+        ?.takeIf { it.isNotEmpty() }
+        ?.joinToString(",") { it.toEpochDay().toString() },
+    recurrenceGroupId       = recurrenceGroupId,
+    isRecurrenceGenerated   = isRecurrenceGenerated,
     ownerId                 = ownerId,
     isImported              = isImported,
     sourceScheduleId        = sourceScheduleId,

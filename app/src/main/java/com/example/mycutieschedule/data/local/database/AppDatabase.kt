@@ -2,6 +2,8 @@ package com.example.mycutieschedule.data.local.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.mycutieschedule.data.local.dao.DayNoteDao
 import com.example.mycutieschedule.data.local.dao.EventDao
 import com.example.mycutieschedule.data.local.dao.SharedScheduleDao
@@ -12,14 +14,11 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
 /**
  * Single Room database for MyCutieSchedule.
  *
- * All datetimes are stored as Long (epoch millis/days) — no TypeConverters needed.
- *
  * Schema versioning:
- *   v1 — initial schema with event_table, day_note_table, shared_schedule_table.
- *
- * Migration strategy:
- *   Add a [androidx.room.migration.Migration] object and pass it to
- *   RoomDatabase.Builder.addMigrations() in [DatabaseModule] before incrementing [version].
+ *   v1 — initial schema: event_table, day_note_table, shared_schedule_table.
+ *   v2 — adds recurring-event columns to event_table:
+ *          recurrence_interval_weeks, recurrence_custom_dates,
+ *          recurrence_group_id, is_recurrence_generated.
  */
 @Database(
     entities = [
@@ -27,8 +26,8 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
         DayNoteEntity::class,
         SharedScheduleEntity::class,
     ],
-    version = 1,
-    exportSchema = false,   // set to true + configure schemaLocation for production migrations
+    version = 2,
+    exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
 
@@ -38,5 +37,14 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "mycutieschedule.db"
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE event_table ADD COLUMN recurrence_interval_weeks INTEGER")
+                database.execSQL("ALTER TABLE event_table ADD COLUMN recurrence_custom_dates TEXT")
+                database.execSQL("ALTER TABLE event_table ADD COLUMN recurrence_group_id TEXT")
+                database.execSQL("ALTER TABLE event_table ADD COLUMN is_recurrence_generated INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
 }
