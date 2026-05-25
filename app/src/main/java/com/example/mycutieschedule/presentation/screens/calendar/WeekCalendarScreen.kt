@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,11 +67,10 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-private val HOUR_HEIGHT     = 64.dp
-private val TIME_COL_WIDTH  = 52.dp
-private val TOTAL_GRID_HEIGHT = HOUR_HEIGHT * 24
-private val MIN_EVENT_HEIGHT  = 30.dp
-private const val BASE_PAGE   = 5000
+private val HOUR_HEIGHT      = 42.dp   // compact: ~14 hours visible on a typical phone
+private val TIME_COL_WIDTH   = 42.dp
+private val MIN_EVENT_HEIGHT = 30.dp
+private const val BASE_PAGE  = 5000
 
 /**
  * Week calendar screen.
@@ -122,15 +122,15 @@ fun WeekCalendarScreen(
 
     // Shared vertical scroll state — all pages use the same offset (Google Calendar style).
     val verticalScrollState = rememberScrollState()
+    val density = LocalDensity.current
 
-    // Auto-scroll to show current time on first open.
+    // Auto-scroll to ~2 hours before current time on first open.
+    // Uses the default visible start (07:00) as the grid origin for the initial calculation.
     LaunchedEffect(Unit) {
-        val nowMinutes = LocalTime.now().hour * 60 + LocalTime.now().minute
-        // Aim to show ~2 hours above current time.
-        val targetDp = HOUR_HEIGHT * ((nowMinutes / 60f) - 2f).coerceAtLeast(0f)
-        // Convert Dp → px naively using typical density (actual density inaccessible here;
-        // close enough for initial scroll — ComposeView will refine on first measure pass).
-        verticalScrollState.scrollTo((targetDp.value * 3).toInt())
+        val nowMinutes      = LocalTime.now().hour * 60 + LocalTime.now().minute
+        val relativeMinutes = (nowMinutes - 7 * 60 - 120).coerceAtLeast(0)
+        val targetPx        = with(density) { (HOUR_HEIGHT * (relativeMinutes / 60f)).toPx().toInt() }
+        verticalScrollState.scrollTo(targetPx)
     }
 
     // Derive visible days from pagerState.currentPage (live during swipe animation).
@@ -208,19 +208,22 @@ fun WeekCalendarScreen(
                 modifier = Modifier.weight(1f),
                 beyondViewportPageCount = 1,
             ) { page ->
-                val pageMonday = referenceMonday.plusWeeks((page - BASE_PAGE).toLong())
-                // Show data only for the settled week — adjacent pages show empty grids
-                // and populate once the pager settles and the ViewModel loads them.
-                val pageEvents = if (pageMonday == uiState.currentWeekMonday)
-                    uiState.eventsByDay else emptyMap()
-                val pageDays = remember(pageMonday) { pageMonday.toWeekDays() }
+                val pageMonday    = referenceMonday.plusWeeks((page - BASE_PAGE).toLong())
+                val isCurrentWeek = pageMonday == uiState.currentWeekMonday
+                // Adjacent pages show an empty default grid; data loads once the pager settles.
+                val pageEvents    = if (isCurrentWeek) uiState.eventsByDay    else emptyMap()
+                val pageStartHour = if (isCurrentWeek) uiState.visibleHourStart else 7
+                val pageEndHour   = if (isCurrentWeek) uiState.visibleHourEnd   else 21
+                val pageDays      = remember(pageMonday) { pageMonday.toWeekDays() }
 
                 WeekPageContent(
-                    days = pageDays,
-                    eventsByDay = pageEvents,
-                    today = today,
+                    days             = pageDays,
+                    eventsByDay      = pageEvents,
+                    today            = today,
                     verticalScrollState = verticalScrollState,
-                    onEventClick = onEventClick,
+                    onEventClick     = onEventClick,
+                    visibleHourStart = pageStartHour,
+                    visibleHourEnd   = pageEndHour,
                 )
             }
         }
@@ -300,58 +303,68 @@ private fun WeekPageContent(
     today: LocalDate,
     verticalScrollState: ScrollState,
     onEventClick: (String) -> Unit,
+    visibleHourStart: Int,
+    visibleHourEnd: Int,
     modifier: Modifier = Modifier,
 ) {
+    val visibleHours    = visibleHourEnd - visibleHourStart
+    val totalGridHeight = HOUR_HEIGHT * visibleHours
+
     Row(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(verticalScrollState),
     ) {
         // Left sidebar: hour labels
-        TimeColumn(modifier = Modifier.width(TIME_COL_WIDTH).height(TOTAL_GRID_HEIGHT))
+        TimeColumn(
+            visibleHourStart = visibleHourStart,
+            visibleHourEnd   = visibleHourEnd,
+            modifier = Modifier.width(TIME_COL_WIDTH).height(totalGridHeight),
+        )
 
         // Day columns with shared hour-grid backdrop
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(TOTAL_GRID_HEIGHT),
+                .height(totalGridHeight),
         ) {
             val gridColor = MaterialTheme.colorScheme.outlineVariant
-            // Hour grid lines
+            // Hour grid lines — one per visible hour boundary
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val hourPx = size.height / 24f
-                for (hour in 0..24) {
-                    val y = hour * hourPx
+                val hourPx = size.height / visibleHours.toFloat()
+                for (i in 0..visibleHours) {
+                    val y            = i * hourPx
+                    val absoluteHour = visibleHourStart + i
                     drawLine(
-                        color = gridColor,
-                        start = Offset(0f, y),
-                        end   = Offset(size.width, y),
-                        strokeWidth = if (hour % 6 == 0) 1.5f else 0.7f,
+                        color       = gridColor,
+                        start       = Offset(0f, y),
+                        end         = Offset(size.width, y),
+                        strokeWidth = if (absoluteHour % 6 == 0) 1.5f else 0.7f,
                     )
                 }
             }
 
-            // Current time indicator on today's column position
+            // Current time indicator — only when now falls inside the visible range
             if (days.contains(today)) {
-                val todayIdx = days.indexOf(today)
+                val todayIdx   = days.indexOf(today)
                 val nowMinutes = LocalTime.now().hour * 60 + LocalTime.now().minute
-                val yFraction = nowMinutes / (24f * 60f)
-                val timeLineColor = MaterialTheme.colorScheme.primary
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val y = size.height * yFraction
-                    val colWidth = size.width / days.size
-                    val xStart = todayIdx * colWidth
-                    drawCircle(
-                        color = timeLineColor,
-                        radius = 5f,
-                        center = Offset(xStart, y),
-                    )
-                    drawLine(
-                        color = timeLineColor,
-                        start = Offset(xStart, y),
-                        end   = Offset(xStart + colWidth, y),
-                        strokeWidth = 2f,
-                    )
+                val startMin   = visibleHourStart * 60
+                val endMin     = visibleHourEnd   * 60
+                if (nowMinutes in startMin..endMin) {
+                    val yFraction     = (nowMinutes - startMin).toFloat() / (endMin - startMin)
+                    val timeLineColor = MaterialTheme.colorScheme.primary
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val y        = size.height * yFraction
+                        val colWidth = size.width / days.size
+                        val xStart   = todayIdx * colWidth
+                        drawCircle(color = timeLineColor, radius = 5f, center = Offset(xStart, y))
+                        drawLine(
+                            color       = timeLineColor,
+                            start       = Offset(xStart, y),
+                            end         = Offset(xStart + colWidth, y),
+                            strokeWidth = 2f,
+                        )
+                    }
                 }
             }
 
@@ -360,8 +373,9 @@ private fun WeekPageContent(
                 days.forEach { day ->
                     val sepColor = MaterialTheme.colorScheme.outlineVariant
                     DayEventsOverlay(
-                        events = eventsByDay[day] ?: emptyList(),
-                        onEventClick = onEventClick,
+                        events           = eventsByDay[day] ?: emptyList(),
+                        onEventClick     = onEventClick,
+                        visibleHourStart = visibleHourStart,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
@@ -369,7 +383,7 @@ private fun WeekPageContent(
                                 drawLine(
                                     color = sepColor,
                                     start = Offset(0f, 0f),
-                                    end = Offset(0f, size.height),
+                                    end   = Offset(0f, size.height),
                                     strokeWidth = 0.5f,
                                 )
                             },
@@ -383,10 +397,15 @@ private fun WeekPageContent(
 // ── TimeColumn ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun TimeColumn(modifier: Modifier = Modifier) {
+private fun TimeColumn(
+    visibleHourStart: Int,
+    visibleHourEnd: Int,
+    modifier: Modifier = Modifier,
+) {
     Box(modifier = modifier) {
-        // Skip "00:00" — it sits right at the top edge and looks crowded.
-        for (hour in 1..23) {
+        // Skip the label that would sit at y=0 (top edge); start one hour in.
+        for (hour in (visibleHourStart + 1)..visibleHourEnd) {
+            val relativeHour = hour - visibleHourStart
             Text(
                 text = "%02d:00".format(hour),
                 style = MaterialTheme.typography.labelSmall,
@@ -395,7 +414,7 @@ private fun TimeColumn(modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(end = 6.dp)
-                    .offset(y = HOUR_HEIGHT * hour - 8.dp),
+                    .offset(y = HOUR_HEIGHT * relativeHour - 8.dp),
             )
         }
     }
@@ -404,29 +423,31 @@ private fun TimeColumn(modifier: Modifier = Modifier) {
 // ── DayEventsOverlay ──────────────────────────────────────────────────────────
 
 /**
- * Renders all events for a single day as absolutely-positioned chips within
- * a [BoxWithConstraints] whose height equals [TOTAL_GRID_HEIGHT].
+ * Renders all events for a single day as absolutely-positioned chips.
  *
- * Each chip's vertical position and height are derived from the event's
- * start/end minutes relative to midnight.
+ * Vertical positions are relative to [visibleHourStart], not midnight, so events
+ * align correctly with the visible portion of the time grid regardless of which
+ * hour range is currently shown.
  */
 @Composable
 private fun DayEventsOverlay(
     events: List<PositionedEvent>,
     onEventClick: (String) -> Unit,
+    visibleHourStart: Int,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
-        val totalWidth = maxWidth
+        val totalWidth    = maxWidth
+        val gridOriginMin = visibleHourStart * 60   // minutes-from-midnight at the grid top
         events.forEach { pe ->
-            val startMin = pe.event.startDateTime.hour * 60 + pe.event.startDateTime.minute
-            val endMin   = pe.event.endDateTime.hour * 60 + pe.event.endDateTime.minute
+            val startMin = pe.event.startDateTime.hour * 60 + pe.event.startDateTime.minute - gridOriginMin
+            val endMin   = pe.event.endDateTime.hour   * 60 + pe.event.endDateTime.minute   - gridOriginMin
             val durMin   = (endMin - startMin).coerceIn(30, 24 * 60)
 
             val topDp    = HOUR_HEIGHT * (startMin / 60f)
             val heightDp = (HOUR_HEIGHT * (durMin / 60f)).coerceAtLeast(MIN_EVENT_HEIGHT)
-            val widthFrac  = 1f / pe.columnCount
-            val leftFrac   = pe.columnIndex.toFloat() / pe.columnCount
+            val widthFrac = 1f / pe.columnCount
+            val leftFrac  = pe.columnIndex.toFloat() / pe.columnCount
 
             EventChip(
                 event   = pe.event,

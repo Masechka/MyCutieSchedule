@@ -19,6 +19,10 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
 
+// ── Visible hour range defaults ────────────────────────────────────────────────
+private const val DEFAULT_VISIBLE_START_HOUR = 7
+private const val DEFAULT_VISIBLE_END_HOUR   = 21
+
 /**
  * Pre-computed layout position for an event within a single day column.
  *
@@ -36,6 +40,16 @@ data class WeekCalendarUiState(
     /** Events pre-processed with overlap-layout positions, keyed by day (Mon–Sun). */
     val eventsByDay: Map<LocalDate, List<PositionedEvent>> = emptyMap(),
     val isLoading: Boolean = true,
+    /**
+     * First hour (inclusive) shown in the time grid.
+     * Defaults to [DEFAULT_VISIBLE_START_HOUR]; shrinks toward 0 when events start earlier.
+     */
+    val visibleHourStart: Int = DEFAULT_VISIBLE_START_HOUR,
+    /**
+     * Last hour (exclusive) shown in the time grid.
+     * Defaults to [DEFAULT_VISIBLE_END_HOUR]; grows toward 24 when events end later.
+     */
+    val visibleHourEnd: Int = DEFAULT_VISIBLE_END_HOUR,
 )
 
 @HiltViewModel
@@ -55,10 +69,13 @@ class WeekCalendarViewModel @Inject constructor(
                 )
             getEventsForWeekUseCase(weekDate = monday, userId = userId)
                 .map { events ->
+                    val (startHour, endHour) = computeVisibleHourRange(events)
                     WeekCalendarUiState(
                         currentWeekMonday = monday,
-                        eventsByDay = buildEventsByDay(monday, events),
-                        isLoading = false,
+                        eventsByDay       = buildEventsByDay(monday, events),
+                        isLoading         = false,
+                        visibleHourStart  = startHour,
+                        visibleHourEnd    = endHour,
                     )
                 }
         }
@@ -129,5 +146,38 @@ class WeekCalendarViewModel @Inject constructor(
         return events.mapIndexed { i, event ->
             PositionedEvent(event = event, columnIndex = assignments[i], columnCount = totalCols)
         }
+    }
+
+    /**
+     * Computes the visible hour range for the week based on the events present.
+     *
+     * Rules:
+     *   - Default window: [DEFAULT_VISIBLE_START_HOUR]..[DEFAULT_VISIBLE_END_HOUR] (07–21)
+     *   - Any event starting before 07:00 → extend start back to that event's hour
+     *   - Any event ending after 21:00    → extend end forward to the next whole hour
+     *   - Result is always clamped to 0..24
+     *
+     * Examples:
+     *   Events 10:00–18:00  →  7..21  (defaults unchanged)
+     *   Event  06:30–08:00  →  6..21  (start extended to 6)
+     *   Event  20:00–23:30  →  7..24  (end extended to 24 = 23+ceil(0.5h))
+     */
+    private fun computeVisibleHourRange(events: List<Event>): Pair<Int, Int> {
+        var startHour = DEFAULT_VISIBLE_START_HOUR
+        var endHour   = DEFAULT_VISIBLE_END_HOUR
+
+        for (event in events) {
+            if (event.startDateTime.hour < startHour) {
+                startHour = event.startDateTime.hour
+            }
+            // Ceil the end to the next whole hour when the event has trailing minutes.
+            val eventEndHour = event.endDateTime.hour +
+                if (event.endDateTime.minute > 0) 1 else 0
+            if (eventEndHour > endHour) {
+                endHour = eventEndHour
+            }
+        }
+
+        return startHour.coerceAtLeast(0) to endHour.coerceAtMost(24)
     }
 }
