@@ -3,6 +3,7 @@ package com.example.mycutieschedule.data.repository
 import com.example.mycutieschedule.core.util.Result
 import com.example.mycutieschedule.core.util.toDomainResult
 import com.example.mycutieschedule.data.mapper.toDto
+import com.example.mycutieschedule.data.remote.util.toFirebaseError
 import com.example.mycutieschedule.data.remote.api.FirestoreUserDataSource
 import com.example.mycutieschedule.domain.model.AuthState
 import com.example.mycutieschedule.domain.model.User
@@ -58,7 +59,11 @@ class AuthRepositoryImpl @Inject constructor(
             val result = auth.signInWithEmailAndPassword(email, password).await()
             result.user?.toDomainUser()
                 ?: error("Sign-in succeeded but no FirebaseUser was returned.")
-        }.toDomainResult()
+        }.fold(
+            onSuccess = { Result.Success(it) },
+            // toFirebaseError() gives human-readable messages (vs raw Firebase exception text)
+            onFailure = { it.toFirebaseError() },
+        )
 
     // ── Sign-up ───────────────────────────────────────────────────────────────
 
@@ -100,7 +105,10 @@ class AuthRepositoryImpl @Inject constructor(
             )
         }
         user
-    }.toDomainResult()
+    }.fold(
+        onSuccess = { Result.Success(it) },
+        onFailure = { it.toFirebaseError() },
+    )
 
     // ── Logout ────────────────────────────────────────────────────────────────
 
