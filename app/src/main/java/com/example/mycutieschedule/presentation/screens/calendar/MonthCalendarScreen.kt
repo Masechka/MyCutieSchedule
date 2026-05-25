@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -35,8 +36,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,6 +54,7 @@ import com.example.mycutieschedule.presentation.theme.Pink200
 import com.example.mycutieschedule.presentation.theme.Pink400
 import com.example.mycutieschedule.presentation.theme.Pink50
 import com.example.mycutieschedule.presentation.theme.Pink500
+import com.example.mycutieschedule.presentation.theme.Pink700
 import com.example.mycutieschedule.presentation.theme.White
 import java.time.LocalDate
 import java.time.YearMonth
@@ -64,6 +68,10 @@ private const val BASE_PAGE = 500
 
 private val RussianLocale = Locale("ru", "RU")
 private val WeekDayNames  = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+
+// Events area shows the same workload hue at this fraction of the full alpha.
+// 0.5 gives a noticeably softer band while keeping the hue recognisable.
+private const val EVENTS_AREA_ALPHA = 0.5f
 
 // ── Workload color mapper ─────────────────────────────────────────────────────
 //
@@ -96,6 +104,33 @@ private fun workloadColor(intensity: Float): Color {
     }
     return WorkloadStops.last().second
 }
+
+// ── Cell content color ────────────────────────────────────────────────────────
+//
+// Three-stop text color scale that adapts to the workload background:
+//
+//   0.00 → Pink700  #C2185B  dark rose/raspberry   — light/empty cells
+//   0.45 → onSurface         neutral dark           — medium-pink cells
+//   0.65 → White             near-white             — hot-pink/raspberry cells
+//
+// Starting from Pink700 instead of onSurface gives light-load days a
+// noticeably deeper rose text that pops against the pale pink background
+// and stays on-brand. onSurface takes over for the medium range where
+// neutral dark achieves better luminance contrast. White closes the scale.
+
+private fun cellContentColor(intensity: Float, onSurface: Color): Color = when {
+    intensity < 0.45f -> lerp(Pink700, onSurface, (intensity / 0.45f).coerceIn(0f, 1f))
+    intensity > 0.65f -> White
+    else              -> lerp(onSurface, White, (intensity - 0.45f) / 0.20f)
+}
+
+// Extremely subtle depth shadow — nearly invisible on light days, slightly
+// enhances separation on saturated backgrounds.
+private val CellTextShadow = Shadow(
+    color      = Color.Black.copy(alpha = 0.12f),
+    offset     = Offset(0f, 0.8f),
+    blurRadius = 2.5f,
+)
 
 // ── Cell data model ───────────────────────────────────────────────────────────
 
@@ -316,84 +351,109 @@ private fun DayCell(
     modifier: Modifier = Modifier,
 ) {
     val bgColor = if (!cell.isCurrentMonth) Color.Transparent else workloadColor(cell.intensity)
+    // Events area uses the same hue at reduced alpha so the workload tint stays
+    // recognisable but provides a softer reading surface for event labels.
+    val eventsBgColor = when {
+        !cell.isCurrentMonth -> Color.Transparent
+        cell.intensity <= 0f -> Color.Transparent
+        else                 -> bgColor.copy(alpha = EVENTS_AREA_ALPHA)
+    }
+
+    val onSurface    = MaterialTheme.colorScheme.onSurface
+    val contentColor = if (cell.isCurrentMonth) cellContentColor(cell.intensity, onSurface)
+                       else onSurface.copy(alpha = 0.3f)
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-            .background(bgColor)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 2.dp, vertical = 3.dp),
+        modifier = modifier.clickable(onClick = onClick),
     ) {
-        // Day number — today gets a pink circle; all other days render plain
+        // ── Date zone — full workload intensity ───────────────────────────
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(26.dp)
-                .then(
-                    if (cell.isToday) Modifier.background(Pink500, CircleShape) else Modifier,
-                ),
+                .fillMaxWidth()
+                .background(bgColor)
+                .padding(start = 2.dp, top = 3.dp, end = 2.dp, bottom = 2.dp),
         ) {
-            Text(
-                text  = cell.date.dayOfMonth.toString(),
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (cell.isToday) FontWeight.Bold else FontWeight.Normal,
-                color = when {
-                    cell.isToday         -> White
-                    !cell.isCurrentMonth -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                    else                 -> MaterialTheme.colorScheme.onSurface
-                },
-            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(26.dp)
+                    .then(
+                        if (cell.isToday) Modifier.background(Pink500, CircleShape) else Modifier,
+                    ),
+            ) {
+                Text(
+                    text       = cell.date.dayOfMonth.toString(),
+                    style      = MaterialTheme.typography.bodySmall.copy(shadow = CellTextShadow),
+                    fontWeight = when {
+                        cell.isToday        -> FontWeight.Bold
+                        cell.isCurrentMonth -> FontWeight.SemiBold
+                        else                -> FontWeight.Normal
+                    },
+                    color      = if (cell.isToday) White else contentColor,
+                )
+            }
         }
 
-        // Event labels (up to 2 dots) + overflow count
+        // ── Events zone — same hue, softened (EVENTS_AREA_ALPHA) ─────────
         val visible  = cell.events.take(2)
         val overflow = cell.events.size - visible.size
 
-        visible.forEach { event ->
-            EventDotLabel(event = event, dimmed = !cell.isCurrentMonth)
-        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(eventsBgColor)
+                .padding(start = 2.dp, top = 1.dp, end = 2.dp, bottom = 3.dp),
+        ) {
+            visible.forEach { event ->
+                EventDotLabel(event = event, textColor = contentColor)
+            }
 
-        if (overflow > 0) {
-            Text(
-                text      = "+$overflow",
-                style     = MaterialTheme.typography.labelSmall,
-                color     = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                modifier  = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
-                textAlign = TextAlign.Start,
-            )
+            if (overflow > 0) {
+                Text(
+                    text      = "+$overflow",
+                    style     = MaterialTheme.typography.labelSmall.copy(shadow = CellTextShadow),
+                    color     = contentColor.copy(alpha = 0.7f),
+                    modifier  = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                    textAlign = TextAlign.Start,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun EventDotLabel(
-    event:    Event,
-    dimmed:   Boolean = false,
-    modifier: Modifier = Modifier,
+    event:     Event,
+    textColor: Color,
+    modifier:  Modifier = Modifier,
 ) {
-    val dotColor  = AllEventColors.getOrElse(event.color.ordinal) { Pink500 }
-    val textAlpha = if (dimmed) 0.45f else 0.9f
+    val accentColor = AllEventColors.getOrElse(event.color.ordinal) { Pink500 }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 3.dp, vertical = 1.dp),
+            .padding(horizontal = 3.dp, vertical = 2.dp),
     ) {
+        // Thin vertical accent line — more structured than a circle dot
         Box(
             modifier = Modifier
-                .size(5.dp)
-                .background(dotColor, CircleShape),
+                .size(width = 3.dp, height = 11.dp)
+                .background(accentColor, RoundedCornerShape(1.dp)),
         )
         Spacer(Modifier.width(3.dp))
         Text(
             text     = event.title,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            style    = MaterialTheme.typography.labelSmall,
-            color    = MaterialTheme.colorScheme.onSurface.copy(alpha = textAlpha),
+            style    = MaterialTheme.typography.labelSmall.copy(shadow = CellTextShadow),
+            color    = textColor,
         )
     }
 }
