@@ -85,6 +85,16 @@ class EventEditorViewModel @Inject constructor(
     /** Stores the full original event so immutable fields are preserved on update. */
     private var originalEvent: Event? = null
 
+    /**
+     * Tracks whether the user has explicitly chosen an end time.
+     *
+     * Starts as `false` for new events so that changes to start time auto-adjust
+     * end to start + 1 h. Set to `true` the moment the user picks a custom end time,
+     * or when an existing event is loaded (its end time must not be overwritten).
+     * Reset logic: also auto-adjusts if end would become invalid (≤ new start).
+     */
+    private var isEndTimeManuallySet: Boolean = false
+
     private val _uiState = MutableStateFlow(buildInitialState())
     val uiState: StateFlow<EventEditorUiState> = _uiState.asStateFlow()
 
@@ -115,6 +125,9 @@ class EventEditorViewModel @Inject constructor(
             val event = getEventByIdUseCase(eventId)
             if (event != null) {
                 originalEvent = event
+                // Treat the loaded end time as manually set so editing start time
+                // on an existing event does not silently overwrite the end time.
+                isEndTimeManuallySet = true
                 _uiState.update {
                     it.copy(
                         isLoading     = false,
@@ -145,10 +158,25 @@ class EventEditorViewModel @Inject constructor(
     }
 
     fun onStartDateTimeChange(value: LocalDateTime) {
-        _uiState.update { it.copy(startDateTime = value, dateRangeError = null) }
+        val currentEnd = _uiState.value.endDateTime
+        // Auto-adjust if: end time was never manually set, OR the new start would
+        // make the range invalid (start >= end). Handles midnight crossing via
+        // LocalDateTime.plusHours(1) which rolls over to the next day automatically.
+        val endIsInvalid   = !value.isBefore(currentEnd)
+        val shouldAutoAdjust = !isEndTimeManuallySet || endIsInvalid
+        _uiState.update {
+            it.copy(
+                startDateTime  = value,
+                endDateTime    = if (shouldAutoAdjust) value.plusHours(1) else currentEnd,
+                dateRangeError = null,
+            )
+        }
     }
 
     fun onEndDateTimeChange(value: LocalDateTime) {
+        // Mark the end time as intentionally chosen by the user so that subsequent
+        // start time changes no longer override it (unless the range becomes invalid).
+        isEndTimeManuallySet = true
         _uiState.update { it.copy(endDateTime = value, dateRangeError = null) }
     }
 
