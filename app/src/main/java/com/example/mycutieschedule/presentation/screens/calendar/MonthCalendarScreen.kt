@@ -132,6 +132,23 @@ private val CellTextShadow = Shadow(
     blurRadius = 2.5f,
 )
 
+// Composites a semi-transparent foreground color over an opaque background.
+// Used to find the actual on-screen color of the events area so we can
+// choose a contrasting text color independent of how alpha is applied.
+private fun compositeOverBg(fg: Color, bg: Color): Color {
+    val a = fg.alpha
+    return Color(
+        red   = fg.red   * a + bg.red   * (1f - a),
+        green = fg.green * a + bg.green * (1f - a),
+        blue  = fg.blue  * a + bg.blue  * (1f - a),
+    )
+}
+
+// Perceived brightness using the standard luma coefficients (ITU-R BT.601).
+// Returns 0f (black) … 1f (white).
+private fun Color.perceivedBrightness(): Float =
+    red * 0.299f + green * 0.587f + blue * 0.114f
+
 // ── Cell data model ───────────────────────────────────────────────────────────
 
 private data class MonthDayCell(
@@ -359,9 +376,20 @@ private fun DayCell(
         else                 -> bgColor.copy(alpha = EVENTS_AREA_ALPHA)
     }
 
-    val onSurface    = MaterialTheme.colorScheme.onSurface
-    val contentColor = if (cell.isCurrentMonth) cellContentColor(cell.intensity, onSurface)
-                       else onSurface.copy(alpha = 0.3f)
+    val onSurface         = MaterialTheme.colorScheme.onSurface
+    // Date area: adapts with workload — dark rose on light days, white on saturated days.
+    val dateContentColor  = if (cell.isCurrentMonth) cellContentColor(cell.intensity, onSurface)
+                            else onSurface.copy(alpha = 0.3f)
+    // Events area: contrast-aware — composite the events bg over the actual surface,
+    // then pick dark-rose for light composites and white for dark composites.
+    val surface           = MaterialTheme.colorScheme.surface
+    val effectiveEventsBg = if (eventsBgColor == Color.Transparent) surface
+                            else compositeOverBg(eventsBgColor, surface)
+    val eventContentColor = when {
+        !cell.isCurrentMonth                            -> onSurface.copy(alpha = 0.3f)
+        effectiveEventsBg.perceivedBrightness() > 0.5f -> Pink700
+        else                                           -> White
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -391,7 +419,7 @@ private fun DayCell(
                         cell.isCurrentMonth -> FontWeight.SemiBold
                         else                -> FontWeight.Normal
                     },
-                    color      = if (cell.isToday) White else contentColor,
+                    color      = if (cell.isToday) White else dateContentColor,
                 )
             }
         }
@@ -409,14 +437,14 @@ private fun DayCell(
                 .padding(start = 2.dp, top = 1.dp, end = 2.dp, bottom = 3.dp),
         ) {
             visible.forEach { event ->
-                EventDotLabel(event = event, textColor = contentColor)
+                EventDotLabel(event = event, textColor = eventContentColor)
             }
 
             if (overflow > 0) {
                 Text(
                     text      = "+$overflow",
                     style     = MaterialTheme.typography.labelSmall.copy(shadow = CellTextShadow),
-                    color     = contentColor.copy(alpha = 0.7f),
+                    color     = eventContentColor.copy(alpha = 0.7f),
                     modifier  = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 6.dp, vertical = 1.dp),
