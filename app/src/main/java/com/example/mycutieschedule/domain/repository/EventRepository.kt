@@ -27,6 +27,12 @@ interface EventRepository {
         userId: String,
     ): Flow<List<Event>>
 
+    /**
+     * Returns a live stream of ALL events that have a recurrence rule, independent of date.
+     * The caller uses [RecurrenceExpander] to project occurrences into the desired range.
+     */
+    fun observeRecurringMasters(userId: String): Flow<List<Event>>
+
     /** Returns a single event by ID, or null if not found. */
     suspend fun getEventById(eventId: String): Event?
 

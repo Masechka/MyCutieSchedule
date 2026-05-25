@@ -25,4 +25,6 @@ enum class RecurrenceType {
     WEEKLY,
     MONTHLY,
     YEARLY,
+    /** Repeats on explicitly selected weekdays (Mon/Wed/Fri, etc.). Uses [Recurrence.repeatDays]. */
+    CUSTOM_DAYS,
 }

@@ -109,11 +109,12 @@ private fun Reminder?.label(): String =
 // ── Recurrence type options ───────────────────────────────────────────────────
 
 private val RecurrenceOptions: List<Pair<RecurrenceType?, String>> = listOf(
-    null                    to "Без повторения",
-    RecurrenceType.DAILY    to "Ежедневно",
-    RecurrenceType.WEEKLY   to "Еженедельно",
-    RecurrenceType.MONTHLY  to "Ежемесячно",
-    RecurrenceType.YEARLY   to "Ежегодно",
+    null                         to "Без повторения",
+    RecurrenceType.DAILY         to "Ежедневно",
+    RecurrenceType.WEEKLY        to "Еженедельно",
+    RecurrenceType.MONTHLY       to "Ежемесячно",
+    RecurrenceType.YEARLY        to "Ежегодно",
+    RecurrenceType.CUSTOM_DAYS   to "Выбрать дни недели",
 )
 
 private fun RecurrenceType?.label(): String =
@@ -171,13 +172,14 @@ fun EventEditorScreen(
     }
 
     // ── Dialog visibility flags ───────────────────────────────────────────────
-    var startDateDialogOpen   by remember { mutableStateOf(false) }
-    var startTimeDialogOpen   by remember { mutableStateOf(false) }
-    var endDateDialogOpen     by remember { mutableStateOf(false) }
-    var endTimeDialogOpen     by remember { mutableStateOf(false) }
-    var reminderDialogOpen    by remember { mutableStateOf(false) }
-    var recurrenceDialogOpen  by remember { mutableStateOf(false) }
-    var deleteConfirmOpen     by remember { mutableStateOf(false) }
+    var startDateDialogOpen          by remember { mutableStateOf(false) }
+    var startTimeDialogOpen          by remember { mutableStateOf(false) }
+    var endDateDialogOpen            by remember { mutableStateOf(false) }
+    var endTimeDialogOpen            by remember { mutableStateOf(false) }
+    var reminderDialogOpen           by remember { mutableStateOf(false) }
+    var recurrenceDialogOpen         by remember { mutableStateOf(false) }
+    var recurrenceEndDateDialogOpen  by remember { mutableStateOf(false) }
+    var deleteConfirmOpen            by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -394,8 +396,9 @@ fun EventEditorScreen(
                 modifier = Modifier.clickable { recurrenceDialogOpen = true },
             )
 
-            // Day-of-week chips — visible only when recurrence type is WEEKLY
-            if (uiState.recurrence?.type == RecurrenceType.WEEKLY) {
+            // Day-of-week chips — visible for WEEKLY and CUSTOM_DAYS recurrence types
+            val recurrenceType = uiState.recurrence?.type
+            if (recurrenceType == RecurrenceType.WEEKLY || recurrenceType == RecurrenceType.CUSTOM_DAYS) {
                 val selectedDays = uiState.recurrence?.repeatDays ?: emptySet()
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -412,6 +415,42 @@ fun EventEditorScreen(
                         )
                     }
                 }
+            }
+
+            // End-date row — visible whenever any recurrence is active
+            val activeRecurrence = uiState.recurrence
+            if (activeRecurrence != null) {
+                val endDate = activeRecurrence.endDate
+                ListItem(
+                    leadingContent = { Spacer(Modifier.size(24.dp)) },
+                    headlineContent = { Text("Повторять до") },
+                    trailingContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (endDate != null) {
+                                TextButton(
+                                    onClick = { viewModel.onRecurrenceEndDateChange(null) },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                ) {
+                                    Text(
+                                        text  = "Убрать",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                            TextButton(
+                                onClick = { recurrenceEndDateDialogOpen = true },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                            ) {
+                                Text(
+                                    text  = endDate?.format(DateFmt) ?: "Без конца",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier.clickable { recurrenceEndDateDialogOpen = true },
+                )
             }
 
             // Bottom padding so the last item isn't hidden behind the system nav bar
@@ -495,6 +534,17 @@ fun EventEditorScreen(
             onSelect  = { type ->
                 viewModel.onRecurrenceTypeChange(type)
                 recurrenceDialogOpen = false
+            },
+        )
+    }
+
+    if (recurrenceEndDateDialogOpen) {
+        EventDatePickerDialog(
+            initialDate = uiState.recurrence?.endDate ?: LocalDate.now().plusMonths(3),
+            onDismiss   = { recurrenceEndDateDialogOpen = false },
+            onConfirm   = { date ->
+                viewModel.onRecurrenceEndDateChange(date)
+                recurrenceEndDateDialogOpen = false
             },
         )
     }

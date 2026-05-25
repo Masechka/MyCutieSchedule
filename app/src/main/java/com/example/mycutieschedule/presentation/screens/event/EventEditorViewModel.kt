@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
 
@@ -76,7 +77,12 @@ class EventEditorViewModel @Inject constructor(
 
     // Deserialise navigation args from SavedStateHandle using type-safe Navigation 2.8+.
     private val route: Screen.EventEditor = savedStateHandle.toRoute()
-    private val eventId: String = route.eventId
+    private val eventId: String = run {
+        val raw = route.eventId
+        // Recurring occurrence IDs have the format "{masterId}_{YYYY-MM-DD}".
+        // Strip the date suffix so the editor always loads the persisted master event.
+        if (raw.matches(Regex(".*_\\d{4}-\\d{2}-\\d{2}"))) raw.substringBeforeLast('_') else raw
+    }
     private val prefillMilli: Long? = route.prefillDateEpochMilli
 
     /** True when the screen was opened with an existing event ID. */
@@ -189,30 +195,32 @@ class EventEditorViewModel @Inject constructor(
     }
 
     fun onRecurrenceTypeChange(type: RecurrenceType?) {
-        val existingDays = _uiState.value.recurrence?.repeatDays ?: emptySet()
+        val existing = _uiState.value.recurrence
+        val keepDays = type == RecurrenceType.WEEKLY || type == RecurrenceType.CUSTOM_DAYS
         _uiState.update {
             it.copy(
                 recurrence = type?.let { t ->
                     Recurrence(
                         type       = t,
-                        repeatDays = if (t == RecurrenceType.WEEKLY) existingDays else emptySet(),
+                        repeatDays = if (keepDays) existing?.repeatDays ?: emptySet() else emptySet(),
+                        endDate    = existing?.endDate,
                     )
                 }
             )
         }
     }
 
-    /**
-     * Toggles a day of week in the WEEKLY recurrence's [repeatDays] set.
-     * No-op if the current recurrence type is not WEEKLY.
-     */
     fun onRepeatDayToggled(day: DayOfWeek) {
         val current = _uiState.value.recurrence
-            ?.takeIf { it.type == RecurrenceType.WEEKLY } ?: return
-        val updated = current.repeatDays.let { days ->
-            if (day in days) days - day else days + day
-        }
+            ?.takeIf { it.type == RecurrenceType.WEEKLY || it.type == RecurrenceType.CUSTOM_DAYS }
+            ?: return
+        val updated = if (day in current.repeatDays) current.repeatDays - day else current.repeatDays + day
         _uiState.update { it.copy(recurrence = current.copy(repeatDays = updated)) }
+    }
+
+    fun onRecurrenceEndDateChange(date: LocalDate?) {
+        val current = _uiState.value.recurrence ?: return
+        _uiState.update { it.copy(recurrence = current.copy(endDate = date)) }
     }
 
     // ── Save ──────────────────────────────────────────────────────────────────

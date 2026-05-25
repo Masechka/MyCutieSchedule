@@ -87,6 +87,19 @@ interface EventDao {
     """)
     fun observeImportedEvents(userId: String): Flow<List<EventEntity>>
 
+    /**
+     * Returns all events that carry a recurrence rule, regardless of their start date.
+     * Used together with [RecurrenceExpander] to generate virtual occurrences for any
+     * requested date range without duplicating rows in the database.
+     */
+    @Query("""
+        SELECT * FROM event_table
+        WHERE owner_id = :userId
+          AND recurrence_type IS NOT NULL
+        ORDER BY start_datetime ASC
+    """)
+    fun observeRecurringMasters(userId: String): Flow<List<EventEntity>>
+
     // ── Single-item lookup ────────────────────────────────────────────────────
 
     @Query("SELECT * FROM event_table WHERE id = :eventId LIMIT 1")

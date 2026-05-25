@@ -51,6 +51,10 @@ class EventRepositoryImpl @Inject constructor(
         )
         .map { entities -> entities.map { it.toDomain() } }
 
+    override fun observeRecurringMasters(userId: String): Flow<List<Event>> =
+        eventDao.observeRecurringMasters(userId)
+            .map { entities -> entities.map { it.toDomain() } }
+
     override suspend fun getEventById(eventId: String): Event? =
         eventDao.findById(eventId)?.toDomain()
 
