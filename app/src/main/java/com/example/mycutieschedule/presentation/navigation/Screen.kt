@@ -51,6 +51,12 @@ sealed class Screen {
 
     // ── Main graph ────────────────────────────────────────────────────────────
 
+    /**
+     * Bottom-nav shell that hosts the Month / Week / More tabs.
+     * This is the start destination of [MainGraph] after login.
+     */
+    @Serializable data object MainShell : Screen()
+
     /** Month grid calendar — the app's home screen. */
     @Serializable data object MonthCalendar : Screen()
 

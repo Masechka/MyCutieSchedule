@@ -13,6 +13,7 @@ import com.example.mycutieschedule.presentation.screens.calendar.DayViewScreen
 import com.example.mycutieschedule.presentation.screens.calendar.MonthCalendarScreen
 import com.example.mycutieschedule.presentation.screens.calendar.WeekCalendarScreen
 import com.example.mycutieschedule.presentation.screens.event.EventEditorScreen
+import com.example.mycutieschedule.presentation.screens.main.MainShellScreen
 import com.example.mycutieschedule.presentation.screens.profile.ProfileScreen
 import com.example.mycutieschedule.presentation.screens.settings.SettingsScreen
 import com.example.mycutieschedule.presentation.screens.share.SharedSchedulesScreen
@@ -95,8 +96,32 @@ fun AppNavGraph(navController: NavHostController) {
         // ════════════════════════════════════════════════════════════════════
         //  MAIN GRAPH
         // ════════════════════════════════════════════════════════════════════
-        navigation<Screen.MainGraph>(startDestination = Screen.MonthCalendar) {
+        navigation<Screen.MainGraph>(startDestination = Screen.MainShell) {
 
+            // ── Shell (bottom nav + tabs) ─────────────────────────────────────
+            composable<Screen.MainShell>(
+                enterTransition    = NavTransitions.fadeIn,
+                exitTransition     = NavTransitions.fadeOut,
+                popEnterTransition = NavTransitions.fadeIn,
+                popExitTransition  = NavTransitions.fadeOut,
+            ) {
+                MainShellScreen(
+                    onDayClick = { epochDay ->
+                        navController.navigate(Screen.DayView(dateEpochDay = epochDay))
+                    },
+                    onAddEventClick = { prefillMilli ->
+                        navController.navigate(Screen.EventEditor(prefillDateEpochMilli = prefillMilli))
+                    },
+                    onEventClick = { eventId ->
+                        navController.navigate(Screen.EventEditor(eventId = eventId))
+                    },
+                    onProfileClick         = { navController.navigate(Screen.Profile) },
+                    onSettingsClick        = { navController.navigate(Screen.Settings) },
+                    onSharedSchedulesClick = { navController.navigate(Screen.SharedSchedules) },
+                )
+            }
+
+            // ── Legacy standalone destinations (kept for back-compat) ─────────
             composable<Screen.MonthCalendar>(
                 enterTransition    = NavTransitions.slideFromRight,
                 exitTransition     = NavTransitions.slideToLeft,
@@ -130,6 +155,9 @@ fun AppNavGraph(navController: NavHostController) {
                     },
                     onAddEventClick = { prefillMilli ->
                         navController.navigate(Screen.EventEditor(prefillDateEpochMilli = prefillMilli))
+                    },
+                    onEventClick = { eventId ->
+                        navController.navigate(Screen.EventEditor(eventId = eventId))
                     },
                 )
             }
