@@ -67,7 +67,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-private val HOUR_HEIGHT      = 42.dp   // compact: ~14 hours visible on a typical phone
+private val HOUR_HEIGHT      = 32.dp   // compact: ~14 hours visible on a typical phone
 private val TIME_COL_WIDTH   = 42.dp
 private val MIN_EVENT_HEIGHT = 30.dp
 private const val BASE_PAGE  = 5000

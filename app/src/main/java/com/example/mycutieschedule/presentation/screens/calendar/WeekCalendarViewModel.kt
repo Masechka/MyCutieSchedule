@@ -21,7 +21,7 @@ import javax.inject.Inject
 
 // ── Visible hour range defaults ────────────────────────────────────────────────
 private const val DEFAULT_VISIBLE_START_HOUR = 7
-private const val DEFAULT_VISIBLE_END_HOUR   = 21
+private const val DEFAULT_VISIBLE_END_HOUR   = 22
 
 /**
  * Pre-computed layout position for an event within a single day column.
