@@ -17,9 +17,11 @@ import com.example.mycutieschedule.domain.usecase.event.DeleteRecurringEventUseC
 import com.example.mycutieschedule.domain.usecase.event.GenerateRecurringEventsUseCase
 import com.example.mycutieschedule.domain.usecase.event.GetEventByIdUseCase
 import com.example.mycutieschedule.domain.usecase.event.UpdateEventUseCase
+import com.example.mycutieschedule.di.ApplicationScope
 import com.example.mycutieschedule.presentation.navigation.Screen
 import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -99,6 +101,11 @@ class EventEditorViewModel @Inject constructor(
     private val deleteRecurringEventUseCase: DeleteRecurringEventUseCase,
     private val generateRecurringEventsUseCase: GenerateRecurringEventsUseCase,
     private val authRepository: AuthRepository,
+    /**
+     * Application-scoped scope for fire-and-forget background work (recurrence generation).
+     * Survives ViewModel clearing so generation completes even after the screen closes.
+     */
+    @ApplicationScope private val applicationScope: CoroutineScope,
 ) : ViewModel() {
 
     // Deserialise navigation args using type-safe Navigation 2.8+.
@@ -186,10 +193,25 @@ class EventEditorViewModel @Inject constructor(
         val currentEnd       = _uiState.value.endDateTime
         val endIsInvalid     = !value.isBefore(currentEnd)
         val shouldAutoAdjust = !isEndTimeManuallySet || endIsInvalid
+
+        val newEnd = if (shouldAutoAdjust) {
+            val proposed = value.plusHours(1)
+            // Cross-day events are not supported. If plusHours(1) crosses midnight
+            // (e.g., start = 23:30 → proposed = 00:30 next day), cap at 23:59 on
+            // the same day so the form stays valid without a cross-day end time.
+            if (proposed.toLocalDate().isAfter(value.toLocalDate())) {
+                value.toLocalDate().atTime(23, 59, 0)
+            } else {
+                proposed
+            }
+        } else {
+            currentEnd
+        }
+
         _uiState.update {
             it.copy(
                 startDateTime  = value,
-                endDateTime    = if (shouldAutoAdjust) value.plusHours(1) else currentEnd,
+                endDateTime    = newEnd,
                 dateRangeError = null,
             )
         }
@@ -297,6 +319,8 @@ class EventEditorViewModel @Inject constructor(
      */
     fun saveEvent() {
         val state = _uiState.value
+        if (state.isSaving) return   // guard: already in progress — ignore duplicate taps
+
         var hasError = false
 
         if (state.title.isBlank()) {
@@ -305,6 +329,14 @@ class EventEditorViewModel @Inject constructor(
         }
         if (!state.startDateTime.isBefore(state.endDateTime)) {
             _uiState.update { it.copy(dateRangeError = "Начало должно быть раньше конца") }
+            hasError = true
+        }
+        // Cross-day events break the Day/Week View timeline and are not supported.
+        // This can happen if the user manually selects the next day as the end date
+        // via the DatePicker — the auto-adjust in onStartDateTimeChange already prevents
+        // the auto-generated case (e.g., start 23:30 → end 00:30 next day).
+        if (state.startDateTime.toLocalDate() != state.endDateTime.toLocalDate()) {
+            _uiState.update { it.copy(dateRangeError = "Событие не может переходить на следующий день") }
             hasError = true
         }
         if (hasError) return
@@ -338,30 +370,34 @@ class EventEditorViewModel @Inject constructor(
             when (result) {
                 is Result.Success -> {
                     // ── Step 1: clean up stale generated occurrences ──────────
-                    // When editing: purge all generated rows belonging to the (old or new) group.
-                    // We purge from masterDate+1 so the master event itself is never deleted.
-                    // For new events there are no generated rows yet, so skip the cleanup.
+                    // When editing: purge all generated rows belonging to the (old or new) group
+                    // from masterDate+1 so the master event itself is never deleted.
+                    // For new events there are no generated rows yet, so this is skipped.
+                    // Non-fatal — if cleanup fails we still regenerate below.
                     if (isEditing) {
                         val cleanupGroupId = originalGroupId ?: groupId
                         if (cleanupGroupId != null) {
                             val cleanupFrom = event.startDateTime.toLocalDate()
                                 .plusDays(1).atStartOfDay()
-                            // Non-fatal — even if cleanup fails, we still regenerate.
                             deleteRecurringEventUseCase(cleanupGroupId, cleanupFrom)
                         }
                     }
 
-                    // ── Step 2: generate fresh occurrences ────────────────────
-                    // Runs for both new AND edited events whenever recurrence is active.
-                    // Non-fatal: the master event is already saved, so generation errors
-                    // don't block navigation.
+                    // ── Step 2: generate fresh occurrences — fire-and-forget ──
+                    // Launched on applicationScope so it survives ViewModel clearing.
+                    // The screen closes first; Room insertAll completes in the background
+                    // and the calendar observes the DB update via Flow.
+                    // Non-fatal: master event is already saved; generation errors are logged
+                    // inside the use case and don't affect the user.
                     if (hasRecurrence && event.recurrenceGroupId != null) {
-                        generateRecurringEventsUseCase(event)
+                        applicationScope.launch {
+                            generateRecurringEventsUseCase(event)
+                        }
                     }
 
-                    // ── Step 3: navigate away ─────────────────────────────────
+                    // ── Step 3: close screen immediately ─────────────────────
                     // isSaving stays true → save button remains disabled until the
-                    // screen is removed and the ViewModel is cleared.
+                    // composable is removed from the back stack and the ViewModel is cleared.
                     _events.send(EventEditorEvent.SaveSuccess)
                 }
 

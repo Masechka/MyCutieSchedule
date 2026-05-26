@@ -117,18 +117,25 @@ fun DayViewScreen(
         }
     }
 
-    // Auto-scroll: jump to ~2 h before current time on first open
-    val scrollState   = rememberScrollState()
-    val density       = LocalDensity.current
-    val today         = remember { LocalDate.now() }
-    val isToday       = viewModel.date == today
+    val scrollState = rememberScrollState()
+    val density     = LocalDensity.current
+    val today       = remember { LocalDate.now() }
+    val isToday     = viewModel.date == today
 
-    LaunchedEffect(Unit) {
+    // Auto-scroll: jump to ~2 h before current time (today) or to top (other days).
+    //
+    // Key = isLoadingEvents so this fires AFTER the first event batch loads and
+    // visibleHourStart has been updated by computeVisibleHourRange().
+    // Firing on the default visibleHourStart = 7 (before events load) would place the
+    // scroll offset incorrectly when early events later expand the top of the grid.
+    // The guard prevents re-running once the initial scroll has been applied.
+    LaunchedEffect(uiState.isLoadingEvents) {
+        if (uiState.isLoadingEvents) return@LaunchedEffect   // wait for first load
         val targetMinutes = if (isToday) {
             val nowMinutes = LocalTime.now().hour * 60 + LocalTime.now().minute
             (nowMinutes - 2 * 60).coerceAtLeast(0)
         } else {
-            // Non-today days: scroll to start of visible range (no offset needed)
+            // Non-today days: scroll to top of the (potentially expanded) visible range.
             0
         }
         val relativeMinutes = (targetMinutes - uiState.visibleHourStart * 60).coerceAtLeast(0)
@@ -384,7 +391,9 @@ private fun DayTimeColumn(
             .width(TIME_COL_WIDTH)
             .fillMaxHeight(),
     ) {
-        for (hour in (visibleHourStart + 1)..visibleHourEnd) {
+        // Start one hour in (skips the label that would sit at y=0, the top edge).
+        // Stop before visibleHourEnd so the final label isn't clipped at the bottom.
+        for (hour in (visibleHourStart + 1) until visibleHourEnd) {
             val relativeHour = hour - visibleHourStart
             val label = LocalTime.of(hour % 24, 0).format(timeFmt)
 

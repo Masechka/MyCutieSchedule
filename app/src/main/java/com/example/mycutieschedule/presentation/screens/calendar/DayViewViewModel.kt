@@ -23,8 +23,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
 
-private const val DAY_DEFAULT_START_HOUR = 8
-private const val DAY_DEFAULT_END_HOUR   = 19
+private const val DAY_DEFAULT_START_HOUR = 7
+private const val DAY_DEFAULT_END_HOUR   = 21
 
 // ── Layout model ──────────────────────────────────────────────────────────────
 

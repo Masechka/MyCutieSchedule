@@ -403,8 +403,9 @@ private fun TimeColumn(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
-        // Skip the label that would sit at y=0 (top edge); start one hour in.
-        for (hour in (visibleHourStart + 1)..visibleHourEnd) {
+        // Start one hour in (skips the label that would sit at y=0, the top edge).
+        // Stop before visibleHourEnd so the final label isn't clipped at the bottom.
+        for (hour in (visibleHourStart + 1) until visibleHourEnd) {
             val relativeHour = hour - visibleHourStart
             Text(
                 text = "%02d:00".format(hour),
