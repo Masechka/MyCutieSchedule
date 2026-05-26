@@ -72,13 +72,21 @@ import java.util.Locale
 
 private val HOUR_HEIGHT      = 48.dp   // taller than week view — more room for event detail
 private val TIME_COL_WIDTH   = 48.dp
-private val MIN_EVENT_HEIGHT = 40.dp
+/**
+ * Hard floor so every card is at least tappable (~20 min equivalent).
+ * Intentionally low — the goal is timeline accuracy over comfort padding.
+ */
+private val MIN_EVENT_HEIGHT = 20.dp
+/**
+ * Events shorter than this threshold use compact rendering (single-line title,
+ * tighter vertical padding, no description).  Equals ~50 min at HOUR_HEIGHT=48 dp.
+ */
+private val COMPACT_THRESHOLD = 40.dp
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 private val RussianLocale  = Locale("ru")
 private val ScreenTitleFmt = DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", RussianLocale)
-private val EventTimeFmt   = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun LocalDate.toScreenTitle(): String =
     ScreenTitleFmt.format(this).replaceFirstChar { it.uppercaseChar() }
@@ -339,17 +347,21 @@ private fun DayTimeline(
                 val endMin   = (event.endDateTime.hour   * 60 + event.endDateTime.minute)
                     .coerceIn(gridOriginMin, gridEndMin)
 
-                val topDp    = HOUR_HEIGHT * ((startMin - gridOriginMin) / 60f)
+                val topDp     = HOUR_HEIGHT * ((startMin - gridOriginMin) / 60f)
                 val rawHeight = HOUR_HEIGHT * ((endMin - startMin) / 60f)
-                val heightDp = rawHeight.coerceAtLeast(MIN_EVENT_HEIGHT)
+                val heightDp  = rawHeight.coerceAtLeast(MIN_EVENT_HEIGHT)
+                // Cards shorter than COMPACT_THRESHOLD get condensed layout so
+                // they don't need extra height to fit multi-line / padded content.
+                val isCompact = heightDp < COMPACT_THRESHOLD
 
                 val chipWidth: Dp = colWidth / positioned.columnCount
                 val chipLeft: Dp  = chipWidth * positioned.columnIndex
 
                 DayEventCard(
-                    event    = positioned.event,
-                    onClick  = { onEventClick(event.id) },
-                    modifier = Modifier
+                    event     = positioned.event,
+                    isCompact = isCompact,
+                    onClick   = { onEventClick(event.id) },
+                    modifier  = Modifier
                         .offset(x = chipLeft, y = topDp)
                         .width(chipWidth)
                         .height(heightDp),
@@ -414,12 +426,26 @@ private fun DayTimeColumn(
 
 /**
  * Event chip for the day view.
- * Shows more detail than the week-view chip: title, time range, optional description.
+ *
+ * Time-range text is intentionally omitted: the card height already encodes
+ * duration on the timeline, and displaying "HH:mm – HH:mm" inside short cards
+ * was the primary reason the old [MIN_EVENT_HEIGHT] had to be inflated to 40 dp,
+ * making the timeline visually misleading.
+ *
+ * **Compact mode** ([isCompact] = true, set when card height < [COMPACT_THRESHOLD]):
+ *   - single-line title with `TextOverflow.Ellipsis`
+ *   - tighter vertical padding (2 dp instead of 4 dp)
+ *   - description hidden
+ *
+ * **Normal mode** ([isCompact] = false):
+ *   - up to 2-line title
+ *   - description shown if non-blank
  */
 @Composable
 private fun DayEventCard(
     event: Event,
     onClick: () -> Unit,
+    isCompact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val bgColor   = event.color.toComposeColor()
@@ -431,23 +457,20 @@ private fun DayEventCard(
             .clip(RoundedCornerShape(6.dp))
             .background(bgColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(
+                horizontal = 6.dp,
+                vertical   = if (isCompact) 2.dp else 4.dp,
+            ),
         verticalArrangement = Arrangement.Top,
     ) {
         Text(
             text     = event.title,
             style    = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
             color    = textColor,
-            maxLines = 2,
+            maxLines = if (isCompact) 1 else 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text  = "${event.startDateTime.format(EventTimeFmt)} – ${event.endDateTime.format(EventTimeFmt)}",
-            style = MaterialTheme.typography.labelSmall,
-            color = textColor.copy(alpha = 0.80f),
-            maxLines = 1,
-        )
-        if (event.description.isNotBlank()) {
+        if (!isCompact && event.description.isNotBlank()) {
             Text(
                 text     = event.description,
                 style    = MaterialTheme.typography.labelSmall,
