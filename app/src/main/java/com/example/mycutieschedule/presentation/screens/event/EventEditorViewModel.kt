@@ -49,7 +49,14 @@ sealed class EventEditorEvent {
 data class EventEditorUiState(
     /** True while the existing event is being loaded from the repository. */
     val isLoading: Boolean            = false,
-    /** True while a save / delete call is in progress. */
+    /**
+     * True while a save / delete call is in progress.
+     *
+     * On a successful save this is intentionally NOT reset to false — the screen
+     * will close immediately via [EventEditorEvent.SaveSuccess], so keeping the
+     * button disabled prevents accidental double-saves during the navigation transition.
+     * It is only reset to false on error so the user can retry.
+     */
     val isSaving: Boolean             = false,
     // ── Form fields ──────────────────────────────────────────────────────────
     val title: String                 = "",
@@ -63,10 +70,18 @@ data class EventEditorUiState(
     val recurrence: Recurrence?       = null,
     /**
      * True when the event being edited belongs to a recurrence chain
-     * (i.e. its [Event.recurrenceGroupId] is non-null).
-     * Controls whether the Delete button shows the single-vs-series dialog.
+     * ([Event.recurrenceGroupId] is non-null).
+     * Controls whether the Delete button shows the "this / this and following" dialog.
      */
     val isRecurringEvent: Boolean     = false,
+    /**
+     * True while a delete operation is in progress.
+     *
+     * Like [isSaving], this is intentionally NOT reset on success — the screen closes
+     * immediately via [EventEditorEvent.DeleteSuccess], so keeping the button disabled
+     * prevents accidental double-deletes during navigation. Reset only on error.
+     */
+    val isDeleting: Boolean           = false,
 )
 
 private fun defaultStart(): LocalDateTime =
@@ -87,9 +102,9 @@ class EventEditorViewModel @Inject constructor(
 ) : ViewModel() {
 
     // Deserialise navigation args using type-safe Navigation 2.8+.
-    private val route: Screen.EventEditor  = savedStateHandle.toRoute()
-    private val eventId: String            = route.eventId
-    private val prefillMilli: Long?        = route.prefillDateEpochMilli
+    private val route: Screen.EventEditor = savedStateHandle.toRoute()
+    private val eventId: String           = route.eventId
+    private val prefillMilli: Long?       = route.prefillDateEpochMilli
 
     /** True when the screen was opened with an existing event ID. */
     val isEditing: Boolean = eventId.isNotBlank()
@@ -125,7 +140,7 @@ class EventEditorViewModel @Inject constructor(
             defaultStart()
         }
         return EventEditorUiState(
-            isLoading     = isEditing,   // show spinner while loading the event
+            isLoading     = isEditing,
             startDateTime = start,
             endDateTime   = start.plusHours(1),
         )
@@ -193,9 +208,16 @@ class EventEditorViewModel @Inject constructor(
         _uiState.update { it.copy(reminder = reminder) }
     }
 
+    /**
+     * Updates the recurrence type, preserving compatible settings from the previous rule:
+     * - WEEKLY → keeps interval and any selected days
+     * - Everything else → clears days and resets interval
+     * - CUSTOM_DATES → keeps existing custom dates list
+     * - All types → keeps the end date
+     */
     fun onRecurrenceTypeChange(type: RecurrenceType?) {
         val existing        = _uiState.value.recurrence
-        val keepDays        = type == RecurrenceType.WEEKLY || type == RecurrenceType.CUSTOM_DAYS
+        val keepDays        = type == RecurrenceType.WEEKLY
         val keepInterval    = type == RecurrenceType.WEEKLY
         val keepCustomDates = type == RecurrenceType.CUSTOM_DATES
         _uiState.update {
@@ -213,6 +235,10 @@ class EventEditorViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Toggles a weekday on/off.
+     * Only active for WEEKLY (and the legacy CUSTOM_DAYS type for backward compat).
+     */
     fun onRepeatDayToggled(day: DayOfWeek) {
         val current = _uiState.value.recurrence
             ?.takeIf { it.type == RecurrenceType.WEEKLY || it.type == RecurrenceType.CUSTOM_DAYS }
@@ -226,22 +252,21 @@ class EventEditorViewModel @Inject constructor(
         _uiState.update { it.copy(recurrence = current.copy(endDate = date)) }
     }
 
-    /** Changes the "every N weeks" interval for [RecurrenceType.WEEKLY]. */
+    /** Changes the "every N weeks" interval for [RecurrenceType.WEEKLY] (and legacy CUSTOM_DAYS). Clamped to ≥ 1. */
     fun onRecurrenceIntervalChange(weeks: Int) {
         val current = _uiState.value.recurrence
-            ?.takeIf { it.type == RecurrenceType.WEEKLY }
+            ?.takeIf { it.type == RecurrenceType.WEEKLY || it.type == RecurrenceType.CUSTOM_DAYS }
             ?: return
         _uiState.update { it.copy(recurrence = current.copy(intervalWeeks = weeks.coerceAtLeast(1))) }
     }
 
-    /** Appends [date] to the custom-dates list (no duplicates, kept sorted). */
+    /** Appends [date] to the custom-dates list (deduplicates, keeps sorted). */
     fun onCustomDateAdded(date: LocalDate) {
         val current = _uiState.value.recurrence
             ?.takeIf { it.type == RecurrenceType.CUSTOM_DATES }
             ?: return
         if (date in current.customDates) return
-        val sorted = (current.customDates + date).sorted()
-        _uiState.update { it.copy(recurrence = current.copy(customDates = sorted)) }
+        _uiState.update { it.copy(recurrence = current.copy(customDates = (current.customDates + date).sorted())) }
     }
 
     /** Removes [date] from the custom-dates list. */
@@ -254,6 +279,22 @@ class EventEditorViewModel @Inject constructor(
 
     // ── Save ──────────────────────────────────────────────────────────────────
 
+    /**
+     * Validates, persists, and — for recurring events — generates future occurrences.
+     *
+     * Flow:
+     * 1. Validate form fields.
+     * 2. Determine the `recurrenceGroupId` to use (preserve existing / assign new / null).
+     * 3. Insert (new) or update (existing) the event.
+     * 4. If editing: delete any stale generated occurrences for the group.
+     * 5. If recurrence is active: call [GenerateRecurringEventsUseCase] (non-fatal).
+     * 6. On success: emit [EventEditorEvent.SaveSuccess] — screen closes.
+     *    On error: reset [EventEditorUiState.isSaving] to false so the user can retry.
+     *
+     * **Note:** [EventEditorUiState.isSaving] is intentionally NOT reset on success —
+     * the save button stays disabled until the screen is removed from the back stack,
+     * preventing accidental double-saves during the navigation transition.
+     */
     fun saveEvent() {
         val state = _uiState.value
         var hasError = false
@@ -278,64 +319,112 @@ class EventEditorViewModel @Inject constructor(
                 return@launch
             }
 
-            // Pre-assign IDs for new recurring events so the same ID can be handed
-            // to GenerateRecurringEventsUseCase after a successful insert.
-            val newId      = if (!isEditing && state.recurrence != null) UUID.randomUUID().toString() else ""
-            val newGroupId = if (!isEditing && state.recurrence != null) UUID.randomUUID().toString() else null
+            val hasRecurrence   = state.recurrence != null
+            val originalGroupId = originalEvent?.recurrenceGroupId
 
-            val event  = buildEventToSave(state, userId, newId, newGroupId)
+            // Determine the recurrenceGroupId for the saved event:
+            //   • Removing recurrence       → null (chain ends)
+            //   • Already in a chain        → preserve the existing group UUID
+            //   • Adding recurrence to event that never had one → new UUID
+            val groupId: String? = when {
+                !hasRecurrence          -> null
+                originalGroupId != null -> originalGroupId
+                else                    -> UUID.randomUUID().toString()
+            }
+
+            val event  = buildEventToSave(state, userId, groupId)
             val result = if (isEditing) updateEventUseCase(event) else addEventUseCase(event)
 
-            _uiState.update { it.copy(isSaving = false) }
             when (result) {
                 is Result.Success -> {
-                    // Kick off occurrence generation for brand-new recurring events.
-                    // Errors here are non-fatal — the master event is already saved.
-                    if (!isEditing && event.recurrence != null && event.recurrenceGroupId != null) {
+                    // ── Step 1: clean up stale generated occurrences ──────────
+                    // When editing: purge all generated rows belonging to the (old or new) group.
+                    // We purge from masterDate+1 so the master event itself is never deleted.
+                    // For new events there are no generated rows yet, so skip the cleanup.
+                    if (isEditing) {
+                        val cleanupGroupId = originalGroupId ?: groupId
+                        if (cleanupGroupId != null) {
+                            val cleanupFrom = event.startDateTime.toLocalDate()
+                                .plusDays(1).atStartOfDay()
+                            // Non-fatal — even if cleanup fails, we still regenerate.
+                            deleteRecurringEventUseCase(cleanupGroupId, cleanupFrom)
+                        }
+                    }
+
+                    // ── Step 2: generate fresh occurrences ────────────────────
+                    // Runs for both new AND edited events whenever recurrence is active.
+                    // Non-fatal: the master event is already saved, so generation errors
+                    // don't block navigation.
+                    if (hasRecurrence && event.recurrenceGroupId != null) {
                         generateRecurringEventsUseCase(event)
                     }
+
+                    // ── Step 3: navigate away ─────────────────────────────────
+                    // isSaving stays true → save button remains disabled until the
+                    // screen is removed and the ViewModel is cleared.
                     _events.send(EventEditorEvent.SaveSuccess)
                 }
-                is Result.Error -> _events.send(
-                    EventEditorEvent.ShowError(result.message ?: "Не удалось сохранить событие")
-                )
+
+                is Result.Error -> {
+                    // Allow the user to retry — re-enable the save button.
+                    _uiState.update { it.copy(isSaving = false) }
+                    _events.send(
+                        EventEditorEvent.ShowError(result.message ?: "Не удалось сохранить событие")
+                    )
+                }
             }
         }
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────
 
-    /** Deletes only the currently-open event occurrence. */
+    /**
+     * Deletes only the currently-open event occurrence.
+     *
+     * Sets [EventEditorUiState.isDeleting] = true immediately to disable the button
+     * and prevent double-taps. Not reset on success — the screen closes via
+     * [EventEditorEvent.DeleteSuccess]. Reset on error so the user can retry.
+     */
     fun deleteThisOnly() {
+        if (_uiState.value.isDeleting) return   // guard: ignore if already in progress
+        _uiState.update { it.copy(isDeleting = true) }
         viewModelScope.launch {
             when (val result = deleteEventUseCase(eventId)) {
                 is Result.Success -> _events.send(EventEditorEvent.DeleteSuccess)
-                is Result.Error   -> _events.send(
-                    EventEditorEvent.ShowError(result.message ?: "Не удалось удалить событие")
-                )
+                is Result.Error   -> {
+                    _uiState.update { it.copy(isDeleting = false) }
+                    _events.send(EventEditorEvent.ShowError(result.message ?: "Не удалось удалить событие"))
+                }
             }
         }
     }
 
-    /** Deletes this occurrence AND all following events in the same recurrence chain. */
+    /**
+     * Deletes this occurrence AND all following events in the same recurrence chain.
+     *
+     * Same [EventEditorUiState.isDeleting] guard as [deleteThisOnly].
+     */
     fun deleteThisAndFollowing() {
+        if (_uiState.value.isDeleting) return   // guard: ignore if already in progress
         val event   = originalEvent ?: return
         val groupId = event.recurrenceGroupId ?: run {
-            // No group ID: treat as a plain single-event delete.
+            // No group ID — fall back to single-event delete.
             deleteThisOnly()
             return
         }
+        _uiState.update { it.copy(isDeleting = true) }
         viewModelScope.launch {
             when (val result = deleteRecurringEventUseCase(groupId, event.startDateTime)) {
                 is Result.Success -> _events.send(EventEditorEvent.DeleteSuccess)
-                is Result.Error   -> _events.send(
-                    EventEditorEvent.ShowError(result.message ?: "Не удалось удалить события")
-                )
+                is Result.Error   -> {
+                    _uiState.update { it.copy(isDeleting = false) }
+                    _events.send(EventEditorEvent.ShowError(result.message ?: "Не удалось удалить события"))
+                }
             }
         }
     }
 
-    /** Convenience alias — kept so any existing call sites still compile. */
+    /** Convenience alias so any existing call sites still compile. */
     fun deleteEvent() = deleteThisOnly()
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -345,31 +434,32 @@ class EventEditorViewModel @Inject constructor(
      *
      * When editing, [originalEvent] is the base so that immutable fields
      * ([Event.ownerId], [Event.isImported], [Event.sourceScheduleId], [Event.createdAt],
-     * [Event.recurrenceGroupId], [Event.isRecurrenceGenerated]) are not overwritten.
+     * [Event.isRecurrenceGenerated]) are not accidentally overwritten.
      *
-     * When creating, [preAssignedId] and [preAssignedGroupId] allow the caller
-     * to fix the IDs upfront so they can be reused for occurrence generation.
+     * [groupId] is always written explicitly so that adding recurrence to a previously
+     * non-recurring event propagates the new group UUID, and removing recurrence clears it.
      */
     private fun buildEventToSave(
         state: EventEditorUiState,
         userId: String,
-        preAssignedId: String = "",
-        preAssignedGroupId: String? = null,
+        groupId: String?,
     ): Event {
         val base = originalEvent
         return if (base != null) {
+            // Edit path — preserve immutable fields, update mutable ones.
             base.copy(
-                title         = state.title.trim(),
-                description   = state.description.trim(),
-                startDateTime = state.startDateTime,
-                endDateTime   = state.endDateTime,
-                color         = state.color,
-                reminder      = state.reminder,
-                recurrence    = state.recurrence,
+                title             = state.title.trim(),
+                description       = state.description.trim(),
+                startDateTime     = state.startDateTime,
+                endDateTime       = state.endDateTime,
+                color             = state.color,
+                reminder          = state.reminder,
+                recurrence        = state.recurrence,
+                recurrenceGroupId = groupId,  // explicit so add/remove recurrence is reflected
             )
         } else {
+            // Create path — AddEventUseCase assigns an ID if this is blank.
             Event(
-                id                = preAssignedId,
                 title             = state.title.trim(),
                 description       = state.description.trim(),
                 startDateTime     = state.startDateTime,
@@ -378,7 +468,7 @@ class EventEditorViewModel @Inject constructor(
                 reminder          = state.reminder,
                 recurrence        = state.recurrence,
                 ownerId           = userId,
-                recurrenceGroupId = preAssignedGroupId,
+                recurrenceGroupId = groupId,
             )
         }
     }

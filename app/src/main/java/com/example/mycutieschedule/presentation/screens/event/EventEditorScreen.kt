@@ -110,19 +110,24 @@ private fun Reminder?.label(): String =
         ?: ReminderOptions.firstOrNull { it.first == null && this == null }?.second
         ?: "Без напоминания"
 
-// ── Recurrence type options (YEARLY excluded from UI — legacy only) ───────────
+// ── Recurrence type options ───────────────────────────────────────────────────
+// YEARLY and CUSTOM_DAYS are legacy enum values kept for DB backward-compat.
+// They are intentionally excluded from this list so users can't create new events
+// with those types. WEEKLY now serves both use cases (every N weeks + optional day selection).
 
 private val RecurrenceOptions: List<Pair<RecurrenceType?, String>> = listOf(
     null                          to "Без повторения",
     RecurrenceType.DAILY          to "Ежедневно",
     RecurrenceType.WEEKLY         to "Еженедельно",
     RecurrenceType.MONTHLY        to "Ежемесячно",
-    RecurrenceType.CUSTOM_DAYS    to "Выбрать дни недели",
     RecurrenceType.CUSTOM_DATES   to "Выбрать даты",
 )
 
-private fun RecurrenceType?.label(): String =
-    RecurrenceOptions.firstOrNull { it.first == this }?.second ?: "Без повторения"
+private fun RecurrenceType?.label(): String {
+    // Provide a readable label for the legacy CUSTOM_DAYS type when loading old events.
+    if (this == RecurrenceType.CUSTOM_DAYS) return "Еженедельно (дни)"
+    return RecurrenceOptions.firstOrNull { it.first == this }?.second ?: "Без повторения"
+}
 
 // ── Day-of-week labels (Russian short) ───────────────────────────────────────
 
@@ -200,17 +205,30 @@ fun EventEditorScreen(
                     Text(if (viewModel.isEditing) "Редактирование" else "Новое событие")
                 },
                 actions = {
-                    // Delete button — only visible when editing an existing event
+                    // Delete button — only visible when editing an existing event.
+                    // Disabled and replaced with a spinner while deletion is in progress
+                    // to prevent double-taps and give immediate visual feedback.
                     if (viewModel.isEditing) {
-                        IconButton(onClick = {
-                            if (uiState.isRecurringEvent) deleteRecurrenceDialogOpen = true
-                            else deleteConfirmOpen = true
-                        }) {
-                            Icon(
-                                imageVector        = Icons.Default.Delete,
-                                contentDescription = "Удалить",
-                                tint               = MaterialTheme.colorScheme.error,
-                            )
+                        IconButton(
+                            onClick  = {
+                                if (uiState.isRecurringEvent) deleteRecurrenceDialogOpen = true
+                                else deleteConfirmOpen = true
+                            },
+                            enabled  = !uiState.isDeleting && !uiState.isSaving,
+                        ) {
+                            if (uiState.isDeleting) {
+                                CircularProgressIndicator(
+                                    modifier    = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color       = MaterialTheme.colorScheme.error,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector        = Icons.Default.Delete,
+                                    contentDescription = "Удалить",
+                                    tint               = MaterialTheme.colorScheme.error,
+                                )
+                            }
                         }
                     }
                     // Save button — shows spinner while saving
@@ -407,8 +425,8 @@ fun EventEditorScreen(
 
             val recurrenceType = uiState.recurrence?.type
 
-            // ── Interval selector — WEEKLY only ───────────────────────────────
-            if (recurrenceType == RecurrenceType.WEEKLY) {
+            // ── Interval selector — WEEKLY (and legacy CUSTOM_DAYS) ──────────
+            if (recurrenceType == RecurrenceType.WEEKLY || recurrenceType == RecurrenceType.CUSTOM_DAYS) {
                 val interval = uiState.recurrence?.intervalWeeks ?: 1
                 Row(
                     verticalAlignment     = Alignment.CenterVertically,
@@ -449,7 +467,7 @@ fun EventEditorScreen(
                 }
             }
 
-            // ── Day-of-week chips — WEEKLY and CUSTOM_DAYS ────────────────────
+            // ── Day-of-week chips — WEEKLY (and legacy CUSTOM_DAYS for editing old events) ──
             if (recurrenceType == RecurrenceType.WEEKLY || recurrenceType == RecurrenceType.CUSTOM_DAYS) {
                 val selectedDays = uiState.recurrence?.repeatDays ?: emptySet()
                 Row(

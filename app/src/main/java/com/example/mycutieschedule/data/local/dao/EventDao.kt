@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.example.mycutieschedule.data.local.entity.EventEntity
 import kotlinx.coroutines.flow.Flow
@@ -91,8 +92,6 @@ interface EventDao {
 
     /**
      * Returns all events in a recurrence chain whose start is on or after [fromStartMilli].
-     * Used to collect the IDs/ownerIds needed for Firestore deletion before bulk-deleting
-     * from Room.
      */
     @Query("""
         SELECT * FROM event_table
@@ -103,7 +102,6 @@ interface EventDao {
 
     /**
      * Bulk-deletes all events in a recurrence chain starting from [fromStartMilli].
-     * Call [findByGroupIdFromDate] first to obtain IDs for Firestore cleanup.
      */
     @Query("""
         DELETE FROM event_table
@@ -111,6 +109,25 @@ interface EventDao {
           AND start_datetime >= :fromStartMilli
     """)
     suspend fun deleteByGroupIdFromDate(groupId: String, fromStartMilli: Long)
+
+    /**
+     * Atomically finds and deletes all events in a recurrence chain from [fromStartMilli]
+     * in a single Room transaction, then returns the deleted entities so their IDs
+     * can be forwarded to Firestore cleanup.
+     *
+     * Using [Transaction] here prevents another observer from reading stale data
+     * between the SELECT and the DELETE, and reduces the number of Flow emissions
+     * to a single update instead of one per statement.
+     */
+    @Transaction
+    suspend fun findAndDeleteByGroupIdFromDate(
+        groupId: String,
+        fromStartMilli: Long,
+    ): List<EventEntity> {
+        val entities = findByGroupIdFromDate(groupId, fromStartMilli)
+        deleteByGroupIdFromDate(groupId, fromStartMilli)
+        return entities
+    }
 
     // ── Single-item lookup ────────────────────────────────────────────────────
 
