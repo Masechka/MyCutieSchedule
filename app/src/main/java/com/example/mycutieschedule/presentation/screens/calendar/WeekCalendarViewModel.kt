@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.mycutieschedule.core.extensions.toWeekStart
 import com.example.mycutieschedule.domain.model.Event
 import com.example.mycutieschedule.domain.repository.AuthRepository
+import com.example.mycutieschedule.domain.repository.ShareRepository
 import com.example.mycutieschedule.domain.usecase.event.GetEventsForWeekUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -39,6 +41,11 @@ data class WeekCalendarUiState(
     val currentWeekMonday: LocalDate = LocalDate.now().toWeekStart(),
     /** Events pre-processed with overlap-layout positions, keyed by day (Mon–Sun). */
     val eventsByDay: Map<LocalDate, List<PositionedEvent>> = emptyMap(),
+    /**
+     * Map of `sourceScheduleId` (= share code) → display name (alias or owner name).
+     * Used to label imported events with the schedule they came from.
+     */
+    val sourceLabels: Map<String, String> = emptyMap(),
     val isLoading: Boolean = true,
     /**
      * First hour (inclusive) shown in the time grid.
@@ -56,6 +63,7 @@ data class WeekCalendarUiState(
 class WeekCalendarViewModel @Inject constructor(
     private val getEventsForWeekUseCase: GetEventsForWeekUseCase,
     private val authRepository: AuthRepository,
+    private val shareRepository: ShareRepository,
 ) : ViewModel() {
 
     private val _weekMonday = MutableStateFlow(LocalDate.now().toWeekStart())
@@ -67,17 +75,20 @@ class WeekCalendarViewModel @Inject constructor(
                 ?: return@flatMapLatest flowOf(
                     WeekCalendarUiState(currentWeekMonday = monday, isLoading = false),
                 )
-            getEventsForWeekUseCase(weekDate = monday, userId = userId)
-                .map { events ->
-                    val (startHour, endHour) = computeVisibleHourRange(events)
-                    WeekCalendarUiState(
-                        currentWeekMonday = monday,
-                        eventsByDay       = buildEventsByDay(monday, events),
-                        isLoading         = false,
-                        visibleHourStart  = startHour,
-                        visibleHourEnd    = endHour,
-                    )
-                }
+            combine(
+                getEventsForWeekUseCase(weekDate = monday, userId = userId),
+                shareRepository.observeImportedSchedules(userId),
+            ) { events, sharedSchedules ->
+                val (startHour, endHour) = computeVisibleHourRange(events)
+                WeekCalendarUiState(
+                    currentWeekMonday = monday,
+                    eventsByDay       = buildEventsByDay(monday, events),
+                    sourceLabels      = sharedSchedules.associate { it.id to it.displayName },
+                    isLoading         = false,
+                    visibleHourStart  = startHour,
+                    visibleHourEnd    = endHour,
+                )
+            }
         }
         .stateIn(
             scope = viewModelScope,

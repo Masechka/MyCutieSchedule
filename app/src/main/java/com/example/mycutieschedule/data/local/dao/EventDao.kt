@@ -111,6 +111,19 @@ interface EventDao {
     @Query("DELETE FROM event_table WHERE id IN (:eventIds)")
     suspend fun deleteByIds(eventIds: List<String>)
 
+    /**
+     * One-shot list of every imported event belonging to a specific shared
+     * schedule (identified by the share code = sourceScheduleId).
+     * Used by [com.example.mycutieschedule.data.sync.SharedSchedulesSyncManager]
+     * to diff the local mirror against the owner's latest Firestore snapshot.
+     */
+    @Query("""
+        SELECT * FROM event_table
+        WHERE source_schedule_id = :sourceScheduleId
+          AND is_imported = 1
+    """)
+    suspend fun findImportedEventsBySource(sourceScheduleId: String): List<EventEntity>
+
     // ── Recurrence chain queries ──────────────────────────────────────────────
 
     /**

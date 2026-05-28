@@ -139,6 +139,15 @@ class ShareRepositoryImpl @Inject constructor(
             sharedScheduleDao.deleteById(scheduleId)
         }.toDomainResult()
 
+    override suspend fun updateImportedScheduleAlias(
+        scheduleId: String,
+        alias: String?,
+    ): Result<Unit> = runCatching {
+        // Normalize: blank → null, so the UI fallback to ownerName kicks in.
+        val normalized = alias?.trim()?.takeIf { it.isNotBlank() }
+        sharedScheduleDao.updateAlias(scheduleId, normalized)
+    }.toDomainResult()
+
     /**
      * Combines two Room flows to build a live [SharedSchedule] list:
      *   - [SharedScheduleDao.observeAll] — schedule metadata

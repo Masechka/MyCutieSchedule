@@ -39,6 +39,14 @@ data class SharedScheduleEntity(
     @ColumnInfo(name = "owner_name")
     val ownerName: String,
 
+    /**
+     * Local-only alias chosen by the viewer (e.g. "Аня — учёба") that overrides
+     * [ownerName] in the viewer's UI. NULL means "use owner name as-is".
+     * Never propagates back to the owner or to Firestore.
+     */
+    @ColumnInfo(name = "local_alias_name")
+    val localAliasName: String?,
+
     /** Firebase Auth UID of the current user who accessed this schedule. */
     @ColumnInfo(name = "viewer_id")
     val viewerId: String,

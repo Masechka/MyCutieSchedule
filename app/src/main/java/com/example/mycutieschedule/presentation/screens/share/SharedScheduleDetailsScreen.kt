@@ -18,8 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -29,6 +31,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -92,7 +95,9 @@ fun SharedScheduleDetailsScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text     = uiState.schedule?.ownerName?.takeIf { it.isNotBlank() }
+                        // Prefer the viewer's local alias over the owner-provided name —
+                        // the user explicitly chose how to label this schedule.
+                        text     = uiState.schedule?.displayName?.takeIf { it.isNotBlank() }
                             ?.let { "Расписание $it" }
                             ?: "Расписание",
                         maxLines = 1,
@@ -106,6 +111,15 @@ fun SharedScheduleDetailsScreen(
                 },
                 actions = {
                     if (uiState.schedule != null) {
+                        IconButton(
+                            onClick = viewModel::showRenameDialog,
+                            enabled = !uiState.isRemoving,
+                        ) {
+                            Icon(
+                                imageVector        = Icons.Filled.Edit,
+                                contentDescription = "Переименовать",
+                            )
+                        }
                         IconButton(
                             onClick = { showDeleteConfirm = true },
                             enabled = !uiState.isRemoving,
@@ -151,6 +165,18 @@ fun SharedScheduleDetailsScreen(
                 }
             }
         }
+    }
+
+    // ── Rename dialog ─────────────────────────────────────────────────────────
+    if (uiState.renameDialog.isVisible && uiState.schedule != null) {
+        RenameImportedScheduleDialog(
+            currentAlias = uiState.renameDialog.draft,
+            ownerName    = uiState.schedule!!.ownerName,
+            isSaving     = uiState.renameDialog.isSaving,
+            onChange     = viewModel::onRenameDraftChange,
+            onConfirm    = viewModel::confirmRename,
+            onDismiss    = viewModel::dismissRenameDialog,
+        )
     }
 
     if (showDeleteConfirm) {
@@ -246,10 +272,19 @@ private fun HeaderCard(schedule: SharedSchedule) {
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text  = schedule.ownerName.ifBlank { "Без имени" },
+                    text  = schedule.displayName.ifBlank { "Без имени" },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = ImportedDark,
                 )
+                // If the viewer renamed it, show the original owner name underneath
+                // as a small reminder of who actually owns the schedule.
+                if (schedule.localAliasName != null && schedule.ownerName.isNotBlank()) {
+                    Text(
+                        text  = "от ${schedule.ownerName}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ImportedMedium,
+                    )
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text  = "Код: ${schedule.shareCode} • ${schedule.events.size} ${eventCountWord(schedule.events.size)}",
@@ -360,6 +395,67 @@ private fun NotFoundState() {
             textAlign = TextAlign.Center,
         )
     }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Rename dialog
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun RenameImportedScheduleDialog(
+    currentAlias: String,
+    ownerName: String,
+    isSaving: Boolean,
+    onChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title            = { Text("Переименовать расписание") },
+        text = {
+            Column {
+                Text(
+                    text  = "Это название видно только вам. Владелец расписания " +
+                            "по-прежнему называется «$ownerName».",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value         = currentAlias,
+                    onValueChange = onChange,
+                    label         = { Text("Локальное имя") },
+                    singleLine    = true,
+                    enabled       = !isSaving,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !isSaving,
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier    = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color       = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Сохраняется…")
+                } else {
+                    Text("Сохранить")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text("Отмена")
+            }
+        },
+    )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

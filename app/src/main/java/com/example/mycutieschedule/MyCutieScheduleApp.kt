@@ -2,6 +2,7 @@ package com.example.mycutieschedule
 
 import android.app.Application
 import com.example.mycutieschedule.data.sync.EventSyncManager
+import com.example.mycutieschedule.data.sync.SharedSchedulesSyncManager
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import javax.inject.Inject
@@ -11,16 +12,21 @@ class MyCutieScheduleApp : Application() {
 
     /**
      * Injected by Hilt after [onCreate] is called by the framework.
-     * [EventSyncManager] is a singleton — starting it here ensures the
-     * Firestore ↔ Room sync loop is active for the entire app lifetime.
+     * Both sync managers are singletons — starting them here ensures the
+     * Firestore ↔ Room sync loops are active for the entire app lifetime.
      */
     @Inject
     lateinit var syncManager: EventSyncManager
+
+    /** Keeps locally-imported shared schedules in sync with their owners' Firestore data. */
+    @Inject
+    lateinit var sharedSchedulesSyncManager: SharedSchedulesSyncManager
 
     override fun onCreate() {
         super.onCreate()
         initTimber()
         syncManager.start()
+        sharedSchedulesSyncManager.start()
     }
 
     /**

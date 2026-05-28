@@ -49,7 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mycutieschedule.core.extensions.toDisplayString
 import com.example.mycutieschedule.core.extensions.toEpochMilli
 import com.example.mycutieschedule.domain.model.Event
-import com.example.mycutieschedule.presentation.theme.AllEventColors
+import com.example.mycutieschedule.presentation.theme.toBackgroundColor
 import com.example.mycutieschedule.presentation.theme.Pink200
 import com.example.mycutieschedule.presentation.theme.Pink400
 import com.example.mycutieschedule.presentation.theme.Pink50
@@ -461,7 +461,8 @@ private fun EventDotLabel(
     textColor: Color,
     modifier:  Modifier = Modifier,
 ) {
-    val accentColor = AllEventColors.getOrElse(event.color.ordinal) { Pink500 }
+    // Imported events get the muted gray-pink palette via Event.toBackgroundColor().
+    val accentColor = event.toBackgroundColor()
 
     Row(
         verticalAlignment = Alignment.CenterVertically,

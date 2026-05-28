@@ -27,7 +27,16 @@ data class SharedSchedule(
     val scheduleId: String,
     val shareCode: String,
     val ownerName: String,
+    /**
+     * Local-only alias chosen by the viewer to override [ownerName] in their UI.
+     * Null means "use [ownerName] as-is". Never sent back to the owner.
+     */
+    val localAliasName: String? = null,
     val events: List<Event> = emptyList(),
     val isImported: Boolean = false,
     val accessedAt: LocalDateTime = LocalDateTime.now(),
-)
+) {
+    /** Name shown to the viewer — alias takes precedence over [ownerName]. */
+    val displayName: String
+        get() = localAliasName?.takeIf { it.isNotBlank() } ?: ownerName
+}

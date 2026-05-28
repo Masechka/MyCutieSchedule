@@ -19,6 +19,8 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
  *   v2 — adds recurring-event columns to event_table:
  *          recurrence_interval_weeks, recurrence_custom_dates,
  *          recurrence_group_id, is_recurrence_generated.
+ *   v3 — adds local_alias_name column to shared_schedule_table so the viewer
+ *          can rename imported schedules locally without affecting the owner.
  */
 @Database(
     entities = [
@@ -26,7 +28,7 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
         DayNoteEntity::class,
         SharedScheduleEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -44,6 +46,12 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE event_table ADD COLUMN recurrence_custom_dates TEXT")
                 database.execSQL("ALTER TABLE event_table ADD COLUMN recurrence_group_id TEXT")
                 database.execSQL("ALTER TABLE event_table ADD COLUMN is_recurrence_generated INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE shared_schedule_table ADD COLUMN local_alias_name TEXT")
             }
         }
     }

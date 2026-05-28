@@ -58,8 +58,9 @@ import com.example.mycutieschedule.core.extensions.toEpochMilli
 import com.example.mycutieschedule.core.extensions.toWeekDays
 import com.example.mycutieschedule.core.extensions.toWeekStart
 import com.example.mycutieschedule.domain.model.Event
-import com.example.mycutieschedule.domain.model.EventColor
-import com.example.mycutieschedule.presentation.theme.AllEventColors
+import com.example.mycutieschedule.presentation.theme.toBackgroundColor
+import com.example.mycutieschedule.presentation.theme.toOnBackgroundColor
+import com.example.mycutieschedule.presentation.theme.toSecondaryTextColor
 import com.example.mycutieschedule.presentation.theme.extended
 import java.time.LocalDate
 import java.time.LocalTime
@@ -219,6 +220,7 @@ fun WeekCalendarScreen(
                 WeekPageContent(
                     days             = pageDays,
                     eventsByDay      = pageEvents,
+                    sourceLabels     = uiState.sourceLabels,
                     today            = today,
                     verticalScrollState = verticalScrollState,
                     onEventClick     = onEventClick,
@@ -300,6 +302,7 @@ private fun DayHeaderRow(
 private fun WeekPageContent(
     days: List<LocalDate>,
     eventsByDay: Map<LocalDate, List<PositionedEvent>>,
+    sourceLabels: Map<String, String>,
     today: LocalDate,
     verticalScrollState: ScrollState,
     onEventClick: (String) -> Unit,
@@ -374,6 +377,7 @@ private fun WeekPageContent(
                     val sepColor = MaterialTheme.colorScheme.outlineVariant
                     DayEventsOverlay(
                         events           = eventsByDay[day] ?: emptyList(),
+                        sourceLabels     = sourceLabels,
                         onEventClick     = onEventClick,
                         visibleHourStart = visibleHourStart,
                         modifier = Modifier
@@ -433,6 +437,7 @@ private fun TimeColumn(
 @Composable
 private fun DayEventsOverlay(
     events: List<PositionedEvent>,
+    sourceLabels: Map<String, String>,
     onEventClick: (String) -> Unit,
     visibleHourStart: Int,
     modifier: Modifier = Modifier,
@@ -450,9 +455,13 @@ private fun DayEventsOverlay(
             val widthFrac = 1f / pe.columnCount
             val leftFrac  = pe.columnIndex.toFloat() / pe.columnCount
 
+            val sourceLabel = if (pe.event.isImported)
+                sourceLabels[pe.event.sourceScheduleId] else null
+
             EventChip(
-                event   = pe.event,
-                onClick = { onEventClick(pe.event.id) },
+                event       = pe.event,
+                sourceLabel = sourceLabel,
+                onClick     = { onEventClick(pe.event.id) },
                 modifier = Modifier
                     .width(totalWidth * widthFrac - 2.dp)
                     .height(heightDp)
@@ -470,12 +479,14 @@ private fun DayEventsOverlay(
 @Composable
 private fun EventChip(
     event: Event,
+    sourceLabel: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val bgColor   = event.color.toComposeColor()
-    val textColor = event.color.onComposeColor()
-    val timeFmt   = remember { DateTimeFormatter.ofPattern("HH:mm") }
+    val bgColor       = event.toBackgroundColor()
+    val textColor     = event.toOnBackgroundColor()
+    val secondaryText = event.toSecondaryTextColor()
+    val timeFmt       = remember { DateTimeFormatter.ofPattern("HH:mm") }
 
     Column(
         modifier = modifier
@@ -491,25 +502,24 @@ private fun EventChip(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = event.startDateTime.format(timeFmt),
-            style = MaterialTheme.typography.labelSmall,
-            color = textColor.copy(alpha = 0.75f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // For imported events show "from <schedule>" instead of the start time —
+        // the time slot is already visually obvious from the chip's position.
+        if (sourceLabel != null) {
+            Text(
+                text = "↗ $sourceLabel",
+                style = MaterialTheme.typography.labelSmall,
+                color = secondaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            Text(
+                text = event.startDateTime.format(timeFmt),
+                style = MaterialTheme.typography.labelSmall,
+                color = secondaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
-}
-
-// ── Color helpers ─────────────────────────────────────────────────────────────
-
-/** Maps [EventColor] to its Compose [Color] by ordinal (matches [AllEventColors] order). */
-private fun EventColor.toComposeColor(): Color = AllEventColors[ordinal]
-
-/** Returns a legible text color (white or dark pink) for text drawn on this event color. */
-private fun EventColor.onComposeColor(): Color = when (this) {
-    EventColor.PEONY,
-    EventColor.ROSE,
-    EventColor.RASPBERRY -> Color.White
-    else                 -> Color(0xFF4A0028) // Pink900 — readable on pale shades
 }

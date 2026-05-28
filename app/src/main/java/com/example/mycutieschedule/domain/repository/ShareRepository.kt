@@ -39,6 +39,13 @@ interface ShareRepository {
     suspend fun removeImportedSchedule(scheduleId: String, userId: String): Result<Unit>
 
     /**
+     * Updates the viewer's local alias for an imported schedule.
+     * Local-only: the original owner's display name is unaffected.
+     * Pass [alias] = null (or blank) to clear the alias and revert to the owner name.
+     */
+    suspend fun updateImportedScheduleAlias(scheduleId: String, alias: String?): Result<Unit>
+
+    /**
      * Live stream of all schedules the current user has imported or is viewing.
      */
     fun observeImportedSchedules(userId: String): Flow<List<SharedSchedule>>

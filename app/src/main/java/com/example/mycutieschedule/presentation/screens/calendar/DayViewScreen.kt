@@ -61,8 +61,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mycutieschedule.core.extensions.toEpochMilli
 import com.example.mycutieschedule.domain.model.Event
-import com.example.mycutieschedule.domain.model.EventColor
-import com.example.mycutieschedule.presentation.theme.AllEventColors
+import com.example.mycutieschedule.presentation.theme.toBackgroundColor
+import com.example.mycutieschedule.presentation.theme.toOnBackgroundColor
+import com.example.mycutieschedule.presentation.theme.toSecondaryTextColor
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -208,6 +209,7 @@ fun DayViewScreen(
             // ── Time grid ─────────────────────────────────────────────────────
             DayTimeline(
                 positionedEvents = uiState.positionedEvents,
+                sourceLabels     = uiState.sourceLabels,
                 isLoading        = uiState.isLoadingEvents,
                 isToday          = isToday,
                 visibleHourStart = uiState.visibleHourStart,
@@ -246,6 +248,7 @@ fun DayViewScreen(
 @Composable
 private fun DayTimeline(
     positionedEvents: List<DayPositionedEvent>,
+    sourceLabels: Map<String, String>,
     isLoading: Boolean,
     isToday: Boolean,
     visibleHourStart: Int,
@@ -357,11 +360,15 @@ private fun DayTimeline(
                 val chipWidth: Dp = colWidth / positioned.columnCount
                 val chipLeft: Dp  = chipWidth * positioned.columnIndex
 
+                val sourceLabel = if (event.isImported)
+                    sourceLabels[event.sourceScheduleId] else null
+
                 DayEventCard(
-                    event     = positioned.event,
-                    isCompact = isCompact,
-                    onClick   = { onEventClick(event.id) },
-                    modifier  = Modifier
+                    event       = positioned.event,
+                    sourceLabel = sourceLabel,
+                    isCompact   = isCompact,
+                    onClick     = { onEventClick(event.id) },
+                    modifier    = Modifier
                         .offset(x = chipLeft, y = topDp)
                         .width(chipWidth)
                         .height(heightDp),
@@ -444,12 +451,14 @@ private fun DayTimeColumn(
 @Composable
 private fun DayEventCard(
     event: Event,
+    sourceLabel: String?,
     onClick: () -> Unit,
     isCompact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val bgColor   = event.color.toComposeColor()
-    val textColor = event.color.onComposeColor()
+    val bgColor       = event.toBackgroundColor()
+    val textColor     = event.toOnBackgroundColor()
+    val secondaryText = event.toSecondaryTextColor()
 
     Column(
         modifier = modifier
@@ -470,11 +479,21 @@ private fun DayEventCard(
             maxLines = if (isCompact) 1 else 2,
             overflow = TextOverflow.Ellipsis,
         )
-        if (!isCompact && event.description.isNotBlank()) {
+        // For imported events, prefer the source schedule label over description —
+        // it identifies WHERE the event came from, which is more useful in mixed views.
+        if (sourceLabel != null) {
+            Text(
+                text     = "↗ $sourceLabel",
+                style    = MaterialTheme.typography.labelSmall,
+                color    = secondaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else if (!isCompact && event.description.isNotBlank()) {
             Text(
                 text     = event.description,
                 style    = MaterialTheme.typography.labelSmall,
-                color    = textColor.copy(alpha = 0.65f),
+                color    = secondaryText,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -549,15 +568,5 @@ private fun DayNotesSection(
     }
 }
 
-// ── Color helpers ─────────────────────────────────────────────────────────────
-
-/** Maps [EventColor] to its Compose [Color] by ordinal (matches [AllEventColors] order). */
-private fun EventColor.toComposeColor(): Color = AllEventColors[ordinal]
-
-/** Returns a legible text color (white or dark pink) for text drawn on this event color. */
-private fun EventColor.onComposeColor(): Color = when (this) {
-    EventColor.PEONY,
-    EventColor.ROSE,
-    EventColor.RASPBERRY -> Color.White
-    else                 -> Color(0xFF4A0028)
-}
+// Color helpers moved to presentation/theme/EventColors.kt — central, with
+// imported-event palette support.

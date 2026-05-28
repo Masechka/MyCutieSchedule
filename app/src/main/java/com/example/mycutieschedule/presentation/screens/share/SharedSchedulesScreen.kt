@@ -349,7 +349,9 @@ private fun ImportedScheduleCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text       = schedule.ownerName.ifBlank { "Без имени" },
+                    // Prefer the viewer's local alias — if they renamed it,
+                    // that's the name they want to see.
+                    text       = schedule.displayName.ifBlank { "Без имени" },
                     style      = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color      = ImportedDark,
                     maxLines   = 1,

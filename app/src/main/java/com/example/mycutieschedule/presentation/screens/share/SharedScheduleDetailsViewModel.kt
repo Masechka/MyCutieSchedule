@@ -29,6 +29,13 @@ sealed class SharedScheduleDetailsEvent {
     data class ShowSnackbar(val message: String) : SharedScheduleDetailsEvent()
 }
 
+/** Local-rename dialog state. Lives entirely in the ViewModel so config changes don't reset it. */
+data class RenameDialogState(
+    val isVisible: Boolean   = false,
+    val draft: String        = "",
+    val isSaving: Boolean    = false,
+)
+
 // ── UI state ──────────────────────────────────────────────────────────────────
 
 /**
@@ -43,6 +50,7 @@ data class SharedScheduleDetailsUiState(
     val isLoading: Boolean = true,
     val schedule: SharedSchedule? = null,
     val isRemoving: Boolean = false,
+    val renameDialog: RenameDialogState = RenameDialogState(),
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -92,6 +100,56 @@ class SharedScheduleDetailsViewModel @Inject constructor(
                         it.copy(isLoading = false, schedule = schedule)
                     }
                 }
+        }
+    }
+
+    // ── Rename (local alias) ──────────────────────────────────────────────────
+
+    fun showRenameDialog() {
+        val current = _uiState.value.schedule ?: return
+        _uiState.update {
+            it.copy(
+                renameDialog = RenameDialogState(
+                    isVisible = true,
+                    draft     = current.localAliasName ?: current.ownerName,
+                ),
+            )
+        }
+    }
+
+    fun onRenameDraftChange(value: String) {
+        _uiState.update { it.copy(renameDialog = it.renameDialog.copy(draft = value)) }
+    }
+
+    fun dismissRenameDialog() {
+        _uiState.update { it.copy(renameDialog = RenameDialogState()) }
+    }
+
+    fun confirmRename() {
+        val schedule = _uiState.value.schedule ?: return
+        val draft    = _uiState.value.renameDialog.draft.trim()
+        // Treat draft == ownerName as "reset alias" — keep storage clean.
+        val newAlias = draft.takeIf { it.isNotBlank() && it != schedule.ownerName }
+
+        _uiState.update { it.copy(renameDialog = it.renameDialog.copy(isSaving = true)) }
+
+        viewModelScope.launch {
+            when (val result = shareRepository.updateImportedScheduleAlias(schedule.id, newAlias)) {
+                is Result.Success -> {
+                    _uiState.update { it.copy(renameDialog = RenameDialogState()) }
+                    _events.send(SharedScheduleDetailsEvent.ShowSnackbar(
+                        if (newAlias == null) "Алиас сброшен" else "Расписание переименовано"
+                    ))
+                }
+                is Result.Error -> {
+                    _uiState.update {
+                        it.copy(renameDialog = it.renameDialog.copy(isSaving = false))
+                    }
+                    _events.send(SharedScheduleDetailsEvent.ShowSnackbar(
+                        "Не удалось переименовать: ${result.message ?: "неизвестная ошибка"}"
+                    ))
+                }
+            }
         }
     }
 

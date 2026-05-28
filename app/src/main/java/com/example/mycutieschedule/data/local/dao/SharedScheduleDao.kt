@@ -27,6 +27,14 @@ interface SharedScheduleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(schedule: SharedScheduleEntity)
 
+    /**
+     * Updates only the [SharedScheduleEntity.localAliasName] field — the
+     * viewer-chosen alias that overrides [SharedScheduleEntity.ownerName] in
+     * the UI. Pass null to clear the alias and revert to the owner-provided name.
+     */
+    @Query("UPDATE shared_schedule_table SET local_alias_name = :alias WHERE id = :id")
+    suspend fun updateAlias(id: String, alias: String?)
+
     @Query("DELETE FROM shared_schedule_table WHERE id = :id")
     suspend fun deleteById(id: String)
 }

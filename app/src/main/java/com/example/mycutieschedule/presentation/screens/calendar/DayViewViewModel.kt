@@ -9,6 +9,7 @@ import com.example.mycutieschedule.domain.model.DayNote
 import com.example.mycutieschedule.domain.model.Event
 import com.example.mycutieschedule.domain.repository.AuthRepository
 import com.example.mycutieschedule.domain.repository.DayNoteRepository
+import com.example.mycutieschedule.domain.repository.ShareRepository
 import com.example.mycutieschedule.domain.usecase.event.GetEventsForDayUseCase
 import com.example.mycutieschedule.presentation.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +54,11 @@ sealed class DayViewEvent {
 data class DayViewUiState(
     val date: LocalDate,
     val positionedEvents: List<DayPositionedEvent> = emptyList(),
+    /**
+     * `sourceScheduleId` (= share code) → display name (alias or owner name).
+     * Used to label imported events on the day timeline.
+     */
+    val sourceLabels: Map<String, String> = emptyMap(),
     val isLoadingEvents: Boolean  = true,
     /** First hour (inclusive) shown in the time grid. Auto-extends for early events. */
     val visibleHourStart: Int     = DAY_DEFAULT_START_HOUR,
@@ -74,6 +80,7 @@ class DayViewViewModel @Inject constructor(
     private val getEventsForDayUseCase: GetEventsForDayUseCase,
     private val dayNoteRepository: DayNoteRepository,
     private val authRepository: AuthRepository,
+    private val shareRepository: ShareRepository,
 ) : ViewModel() {
 
     val date: LocalDate = LocalDate.ofEpochDay(
@@ -91,8 +98,19 @@ class DayViewViewModel @Inject constructor(
         if (userId != null) {
             observeEvents(userId)
             observeNote(userId)
+            observeImportedScheduleLabels(userId)
         } else {
             _uiState.update { it.copy(isLoadingEvents = false) }
+        }
+    }
+
+    private fun observeImportedScheduleLabels(userId: String) {
+        viewModelScope.launch {
+            shareRepository.observeImportedSchedules(userId).collect { schedules ->
+                _uiState.update {
+                    it.copy(sourceLabels = schedules.associate { s -> s.id to s.displayName })
+                }
+            }
         }
     }
 
