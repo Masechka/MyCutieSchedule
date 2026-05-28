@@ -16,6 +16,7 @@ import com.example.mycutieschedule.presentation.screens.event.EventEditorScreen
 import com.example.mycutieschedule.presentation.screens.main.MainShellScreen
 import com.example.mycutieschedule.presentation.screens.profile.ProfileScreen
 import com.example.mycutieschedule.presentation.screens.settings.SettingsScreen
+import com.example.mycutieschedule.presentation.screens.share.SharedScheduleDetailsScreen
 import com.example.mycutieschedule.presentation.screens.share.SharedSchedulesScreen
 
 /**
@@ -203,6 +204,20 @@ fun AppNavGraph(navController: NavHostController) {
                 popExitTransition  = NavTransitions.slideToRight,
             ) {
                 SharedSchedulesScreen(
+                    onNavigateBack  = { navController.popBackStack() },
+                    onScheduleClick = { scheduleId ->
+                        navController.navigate(Screen.SharedScheduleDetails(scheduleId))
+                    },
+                )
+            }
+
+            composable<Screen.SharedScheduleDetails>(
+                enterTransition    = NavTransitions.slideFromRight,
+                exitTransition     = NavTransitions.slideToLeft,
+                popEnterTransition = NavTransitions.slideFromLeft,
+                popExitTransition  = NavTransitions.slideToRight,
+            ) {
+                SharedScheduleDetailsScreen(
                     onNavigateBack = { navController.popBackStack() },
                 )
             }

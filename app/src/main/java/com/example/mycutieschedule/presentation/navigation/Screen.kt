@@ -85,6 +85,13 @@ sealed class Screen {
     /** List of schedules the user has imported or is viewing. */
     @Serializable data object SharedSchedules : Screen()
 
+    /**
+     * Read-only event list for a single imported schedule.
+     *
+     * @param scheduleId [SharedSchedule.id] — equals the share code used to import it.
+     */
+    @Serializable data class SharedScheduleDetails(val scheduleId: String) : Screen()
+
     /** User profile: display name, email, share code generator. */
     @Serializable data object Profile : Screen()
 

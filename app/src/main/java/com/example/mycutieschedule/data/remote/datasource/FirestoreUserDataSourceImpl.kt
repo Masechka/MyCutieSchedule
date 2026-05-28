@@ -7,6 +7,7 @@ import com.example.mycutieschedule.data.remote.api.FirestoreUserDataSource
 import com.example.mycutieschedule.data.remote.dto.UserDto
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
@@ -33,9 +34,20 @@ class FirestoreUserDataSourceImpl @Inject constructor(
     override suspend fun updateShareCode(userId: String, shareCode: String?): Result<Unit> =
         runCatching {
             // Pass FieldValue.delete() to remove the field when shareCode is null (revoke).
+            //
+            // set() with SetOptions.merge() instead of update():
+            // update() throws NOT_FOUND when the user document doesn't exist
+            // (e.g., the original signUp's Firestore write was blocked by
+            // earlier security rules and never created the profile).
+            // set(..., merge) creates the document if missing and only touches
+            // the share_code field if present — same behaviour as update() for
+            // the happy path, but resilient to a missing parent doc.
             val value: Any = shareCode ?: FieldValue.delete()
             userDoc(userId)
-                .update(FirestoreCollections.UserFields.SHARE_CODE, value)
+                .set(
+                    mapOf(FirestoreCollections.UserFields.SHARE_CODE to value),
+                    SetOptions.merge(),
+                )
                 .await()
             Unit
         }.toDomainResult()

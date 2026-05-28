@@ -88,6 +88,29 @@ interface EventDao {
     """)
     fun observeImportedEvents(userId: String): Flow<List<EventEntity>>
 
+    // ── Sync helpers ──────────────────────────────────────────────────────────
+
+    /**
+     * One-shot read of every user-owned event (excludes imported ones from other users).
+     * Used by [com.example.mycutieschedule.data.sync.EventSyncManager] to diff against
+     * the Firestore snapshot in a single round-trip — much cheaper than calling
+     * [findById] in a loop.
+     */
+    @Query("""
+        SELECT * FROM event_table
+        WHERE owner_id = :userId
+          AND is_imported = 0
+    """)
+    suspend fun findAllOwnedByUser(userId: String): List<EventEntity>
+
+    /**
+     * Bulk delete by ID list. Used by [EventSyncManager] to propagate remote
+     * deletions to Room when an event present locally is no longer in the
+     * Firestore snapshot.
+     */
+    @Query("DELETE FROM event_table WHERE id IN (:eventIds)")
+    suspend fun deleteByIds(eventIds: List<String>)
+
     // ── Recurrence chain queries ──────────────────────────────────────────────
 
     /**

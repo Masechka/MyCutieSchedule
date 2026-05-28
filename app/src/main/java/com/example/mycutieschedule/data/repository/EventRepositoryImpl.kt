@@ -131,10 +131,15 @@ class EventRepositoryImpl @Inject constructor(
     private suspend fun writeToFirestore(event: Event) {
         val result = eventDataSource.saveEvent(event.toDto(), event.ownerId)
         if (result is Result.Error) {
-            Timber.w(
+            // VISIBLE failure mode — if this fires consistently, sync between
+            // devices is broken (most often: Firestore Security Rules block
+            // writes to users/{uid}/events). The event lives in Room locally
+            // so the user keeps seeing it, but it never reaches the cloud.
+            Timber.e(
                 result.exception,
-                "Firestore write failed for event id=${event.id}. " +
-                    "EventSyncManager will reconcile on next connection.",
+                "Firestore write FAILED for event id=${event.id} ownerId=${event.ownerId}. " +
+                    "Event saved locally but will NOT propagate to other devices " +
+                    "until the underlying error is resolved (check Firestore Security Rules).",
             )
         }
     }
@@ -142,7 +147,12 @@ class EventRepositoryImpl @Inject constructor(
     private suspend fun deleteFromFirestore(eventId: String, ownerId: String) {
         val result = eventDataSource.deleteEvent(eventId, ownerId)
         if (result is Result.Error) {
-            Timber.w(result.exception, "Firestore delete failed for event id=$eventId.")
+            Timber.e(
+                result.exception,
+                "Firestore delete FAILED for event id=$eventId ownerId=$ownerId. " +
+                    "Event removed locally but still exists in Firestore — " +
+                    "other devices will continue to see it.",
+            )
         }
     }
 }

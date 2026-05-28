@@ -94,12 +94,25 @@ class ShareRepositoryImpl @Inject constructor(
             val shareDto = requireShareDto(shareCode)
 
             // Download the owner's events and mark them as imported.
+            //
+            // CRITICAL: override ownerId to the *viewer's* userId so the events
+            // surface in the viewer's calendar queries (which all filter by
+            // owner_id = :userId). Without this rewrite, imported events would
+            // be stored under the owner's userId and become invisible to the
+            // viewer — matching the spec that imported events are "copied into
+            // the user's own calendar, visually distinguished but editable".
+            //
+            // The original owner is still reachable via sourceScheduleId →
+            // sharedSchedules/{shareCode}.userId, and is_imported = true keeps
+            // them out of the Firestore sync write path (so they never leak
+            // into the viewer's own Firestore subcollection).
             val importedEntities = eventDataSource
                 .observeEvents(shareDto.userId)
                 .first()
                 .map { dto ->
                     dto.toDomain()
                         .copy(
+                            ownerId          = userId,
                             isImported       = true,
                             sourceScheduleId = shareCode,
                         )

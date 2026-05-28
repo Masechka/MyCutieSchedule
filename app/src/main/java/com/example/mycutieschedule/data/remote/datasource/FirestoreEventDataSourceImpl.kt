@@ -35,12 +35,17 @@ class FirestoreEventDataSourceImpl @Inject constructor(
         .collection(FirestoreCollections.EVENTS)
 
     override fun observeEvents(userId: String): Flow<List<EventDto>> = callbackFlow {
+        Timber.d("Firestore: registering snapshot listener for users/$userId/events")
         val registration = eventsCollection(userId).addSnapshotListener { snapshot, error ->
             if (error != null) {
                 // Don't close the flow — Firestore will retry on reconnection.
                 Timber.w(error, "Firestore events snapshot error (userId=$userId)")
                 return@addSnapshotListener
             }
+
+            val isFromCache       = snapshot?.metadata?.isFromCache ?: true
+            val hasPendingWrites  = snapshot?.metadata?.hasPendingWrites() ?: false
+
             val dtos = snapshot?.documents?.mapNotNull { doc ->
                 runCatching {
                     doc.toObject(EventDto::class.java)?.copy(id = doc.id)
@@ -49,10 +54,34 @@ class FirestoreEventDataSourceImpl @Inject constructor(
                     .getOrNull()
             } ?: emptyList()
 
+            Timber.d(
+                "Firestore: snapshot for userId=$userId — ${dtos.size} events " +
+                    "(fromCache=$isFromCache, pendingWrites=$hasPendingWrites)"
+            )
+
             trySend(dtos)
         }
-        awaitClose { registration.remove() }
+        awaitClose {
+            Timber.d("Firestore: unregistering snapshot listener for userId=$userId")
+            registration.remove()
+        }
     }
+
+    override suspend fun fetchOnce(userId: String): Result<List<EventDto>> =
+        runCatching {
+            Timber.d("Firestore: one-shot fetch for users/$userId/events")
+            val snapshot = eventsCollection(userId).get().await()
+            val dtos = snapshot.documents.mapNotNull { doc ->
+                runCatching { doc.toObject(EventDto::class.java)?.copy(id = doc.id) }
+                    .onFailure { Timber.e(it, "Failed to parse EventDto (id=${doc.id})") }
+                    .getOrNull()
+            }
+            Timber.d(
+                "Firestore: one-shot fetch returned ${dtos.size} events for userId=$userId " +
+                    "(fromCache=${snapshot.metadata.isFromCache})"
+            )
+            dtos
+        }.toDomainResult()
 
     override suspend fun saveEvent(event: EventDto, userId: String): Result<Unit> =
         runCatching {
@@ -60,6 +89,7 @@ class FirestoreEventDataSourceImpl @Inject constructor(
                 .document(event.id)
                 .set(event)
                 .await()
+            Timber.d("Firestore: saved event id=${event.id} for userId=$userId")
             Unit  // Task<Void>.await() returns Void?, not Unit — explicit Unit fixes the type
         }.toDomainResult()
 
@@ -69,6 +99,7 @@ class FirestoreEventDataSourceImpl @Inject constructor(
                 .document(eventId)
                 .delete()
                 .await()
+            Timber.d("Firestore: deleted event id=$eventId for userId=$userId")
             Unit
         }.toDomainResult()
 }
