@@ -1,5 +1,6 @@
 package com.example.mycutieschedule.presentation
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -8,6 +9,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.example.mycutieschedule.domain.model.AuthState
+import com.example.mycutieschedule.domain.model.ThemeMode
 import com.example.mycutieschedule.presentation.navigation.AppNavGraph
 import com.example.mycutieschedule.presentation.navigation.Screen
 import com.example.mycutieschedule.presentation.theme.MyCutieScheduleTheme
@@ -39,6 +41,7 @@ fun AppContent(
     navController: NavHostController = rememberNavController(),
 ) {
     val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
     LaunchedEffect(authState) {
         when (authState) {
@@ -53,7 +56,17 @@ fun AppContent(
         }
     }
 
-    MyCutieScheduleTheme {
+    // Resolve user preference → concrete dark/light flag. SYSTEM defers to the
+    // device setting; LIGHT/DARK override. Reading isSystemInDarkTheme() inside
+    // the composable means the theme reacts live to OS dark-mode toggles too.
+    val systemDark = isSystemInDarkTheme()
+    val useDarkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> systemDark
+        ThemeMode.LIGHT  -> false
+        ThemeMode.DARK   -> true
+    }
+
+    MyCutieScheduleTheme(darkTheme = useDarkTheme) {
         AppNavGraph(navController = navController)
     }
 }

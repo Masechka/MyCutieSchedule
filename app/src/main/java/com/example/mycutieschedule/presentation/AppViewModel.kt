@@ -2,8 +2,10 @@ package com.example.mycutieschedule.presentation
 
 import androidx.lifecycle.ViewModel
 import com.example.mycutieschedule.domain.model.AuthState
+import com.example.mycutieschedule.domain.model.ThemeMode
 import com.example.mycutieschedule.domain.repository.AuthRepository
 import com.example.mycutieschedule.domain.usecase.auth.ObserveAuthStateUseCase
+import com.example.mycutieschedule.domain.usecase.settings.ObserveThemeUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,7 @@ import javax.inject.Inject
 class AppViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     observeAuthState: ObserveAuthStateUseCase,
+    observeTheme: ObserveThemeUseCase,
 ) : ViewModel() {
 
     val authState: StateFlow<AuthState> = observeAuthState()
@@ -44,5 +47,19 @@ class AppViewModel @Inject constructor(
             initialValue = authRepository.getCurrentUser()
                 ?.let  { AuthState.Authenticated(it) }
                 ?: AuthState.Unauthenticated,
+        )
+
+    /**
+     * User-selected theme preference, persisted in DataStore.
+     *
+     * Eagerly started so the very first composition of [AppContent] already has
+     * the right value — eliminates a flash from default → user choice on cold
+     * launches. Defaults to [ThemeMode.SYSTEM] until DataStore emits.
+     */
+    val themeMode: StateFlow<ThemeMode> = observeTheme()
+        .stateIn(
+            scope        = viewModelScope,
+            started      = SharingStarted.Eagerly,
+            initialValue = ThemeMode.SYSTEM,
         )
 }
