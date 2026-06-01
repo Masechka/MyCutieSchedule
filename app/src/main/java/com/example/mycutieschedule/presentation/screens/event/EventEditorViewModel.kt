@@ -84,6 +84,18 @@ data class EventEditorUiState(
      * prevents accidental double-deletes during navigation. Reset only on error.
      */
     val isDeleting: Boolean           = false,
+    /**
+     * True when the loaded event belongs to an imported shared schedule
+     * ([Event.isImported] = true).
+     *
+     * In this mode the screen acts as a view-only inspector:
+     *   - save / delete actions are hidden entirely
+     *   - form fields become read-only (editing wouldn't propagate anywhere
+     *     useful anyway — the next sync from the owner would overwrite it)
+     *
+     * Always false for new events (we only know after loading an existing one).
+     */
+    val isReadOnly: Boolean           = false,
 )
 
 private fun defaultStart(): LocalDateTime =
@@ -170,6 +182,10 @@ class EventEditorViewModel @Inject constructor(
                         reminder         = event.reminder,
                         recurrence       = event.recurrence,
                         isRecurringEvent = event.recurrenceGroupId != null,
+                        // Imported events belong to another user's schedule —
+                        // the viewer can inspect but never mutate. Hides edit
+                        // and delete actions in EventEditorScreen.
+                        isReadOnly       = event.isImported,
                     )
                 }
             } else {
@@ -320,6 +336,9 @@ class EventEditorViewModel @Inject constructor(
     fun saveEvent() {
         val state = _uiState.value
         if (state.isSaving) return   // guard: already in progress — ignore duplicate taps
+        // Defence in depth: imported events are view-only — even if a stray
+        // call gets here, refuse silently. UI hides the button to begin with.
+        if (state.isReadOnly) return
 
         var hasError = false
 
@@ -423,6 +442,7 @@ class EventEditorViewModel @Inject constructor(
      */
     fun deleteThisOnly() {
         if (_uiState.value.isDeleting) return   // guard: ignore if already in progress
+        if (_uiState.value.isReadOnly) return   // imported events are view-only
         _uiState.update { it.copy(isDeleting = true) }
         viewModelScope.launch {
             when (val result = deleteEventUseCase(eventId)) {
@@ -442,6 +462,7 @@ class EventEditorViewModel @Inject constructor(
      */
     fun deleteThisAndFollowing() {
         if (_uiState.value.isDeleting) return   // guard: ignore if already in progress
+        if (_uiState.value.isReadOnly) return   // imported events are view-only
         val event   = originalEvent ?: return
         val groupId = event.recurrenceGroupId ?: run {
             // No group ID — fall back to single-event delete.

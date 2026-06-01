@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
@@ -47,6 +48,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -202,48 +204,59 @@ fun EventEditorScreen(
                     }
                 },
                 title = {
-                    Text(if (viewModel.isEditing) "Редактирование" else "Новое событие")
+                    Text(
+                        when {
+                            uiState.isReadOnly  -> "Просмотр события"
+                            viewModel.isEditing -> "Редактирование"
+                            else                -> "Новое событие"
+                        }
+                    )
                 },
                 actions = {
-                    // Delete button — only visible when editing an existing event.
-                    // Disabled and replaced with a spinner while deletion is in progress
-                    // to prevent double-taps and give immediate visual feedback.
-                    if (viewModel.isEditing) {
+                    // Imported events are view-only — hide every mutating
+                    // action (delete + save). The screen becomes a pure
+                    // read-only inspector. See [EventEditorUiState.isReadOnly].
+                    if (!uiState.isReadOnly) {
+                        // Delete button — only visible when editing an existing event.
+                        // Disabled and replaced with a spinner while deletion is in progress
+                        // to prevent double-taps and give immediate visual feedback.
+                        if (viewModel.isEditing) {
+                            IconButton(
+                                onClick  = {
+                                    if (uiState.isRecurringEvent) deleteRecurrenceDialogOpen = true
+                                    else deleteConfirmOpen = true
+                                },
+                                enabled  = !uiState.isDeleting && !uiState.isSaving,
+                            ) {
+                                if (uiState.isDeleting) {
+                                    CircularProgressIndicator(
+                                        modifier    = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color       = MaterialTheme.colorScheme.error,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector        = Icons.Default.Delete,
+                                        contentDescription = "Удалить",
+                                        tint               = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        }
+                        // Save button — shows spinner while saving
                         IconButton(
-                            onClick  = {
-                                if (uiState.isRecurringEvent) deleteRecurrenceDialogOpen = true
-                                else deleteConfirmOpen = true
-                            },
-                            enabled  = !uiState.isDeleting && !uiState.isSaving,
+                            onClick  = viewModel::saveEvent,
+                            enabled  = !uiState.isSaving,
                         ) {
-                            if (uiState.isDeleting) {
+                            if (uiState.isSaving) {
                                 CircularProgressIndicator(
                                     modifier    = Modifier.size(20.dp),
                                     strokeWidth = 2.dp,
-                                    color       = MaterialTheme.colorScheme.error,
+                                    color       = MaterialTheme.colorScheme.primary,
                                 )
                             } else {
-                                Icon(
-                                    imageVector        = Icons.Default.Delete,
-                                    contentDescription = "Удалить",
-                                    tint               = MaterialTheme.colorScheme.error,
-                                )
+                                Icon(Icons.Default.Check, contentDescription = "Сохранить")
                             }
-                        }
-                    }
-                    // Save button — shows spinner while saving
-                    IconButton(
-                        onClick  = viewModel::saveEvent,
-                        enabled  = !uiState.isSaving,
-                    ) {
-                        if (uiState.isSaving) {
-                            CircularProgressIndicator(
-                                modifier    = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color       = MaterialTheme.colorScheme.primary,
-                            )
-                        } else {
-                            Icon(Icons.Default.Check, contentDescription = "Сохранить")
                         }
                     }
                 },
@@ -270,7 +283,39 @@ fun EventEditorScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
 
-            Spacer(Modifier.height(8.dp))
+            // ── Read-only banner ──────────────────────────────────────────────
+            // Communicates clearly why edit/delete are missing: this event belongs
+            // to a shared schedule the user doesn't own.
+            if (uiState.isReadOnly) {
+                Surface(
+                    tonalElevation = 1.dp,
+                    color          = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier       = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape          = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier          = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        Icon(
+                            imageVector        = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier           = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text  = "Только просмотр — событие из общего расписания",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
 
             // ── Title field ───────────────────────────────────────────────────
             OutlinedTextField(
@@ -278,6 +323,7 @@ fun EventEditorScreen(
                 onValueChange   = viewModel::onTitleChange,
                 label           = { Text("Название *") },
                 singleLine      = true,
+                readOnly        = uiState.isReadOnly,
                 isError         = uiState.titleError != null,
                 supportingText  = uiState.titleError?.let { { Text(it) } },
                 keyboardOptions = KeyboardOptions(
@@ -298,6 +344,7 @@ fun EventEditorScreen(
                 label           = { Text("Описание") },
                 minLines        = 2,
                 maxLines        = 5,
+                readOnly        = uiState.isReadOnly,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences,
                     imeAction      = ImeAction.Done,
