@@ -43,6 +43,13 @@ interface SharedScheduleDao {
     @Query("UPDATE shared_schedule_table SET is_visible_in_calendar = :visible WHERE id = :id")
     suspend fun updateVisibility(id: String, visible: Boolean)
 
+    /**
+     * Toggles whether this schedule's events contribute to Month View workload
+     * intensity. Independent from visibility; events still render if visible.
+     */
+    @Query("UPDATE shared_schedule_table SET include_in_workload = :include WHERE id = :id")
+    suspend fun updateIncludeInWorkload(id: String, include: Boolean)
+
     @Query("DELETE FROM shared_schedule_table WHERE id = :id")
     suspend fun deleteById(id: String)
 }

@@ -24,6 +24,9 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
  *   v4 — adds is_visible_in_calendar column to shared_schedule_table so the
  *          viewer can temporarily hide a shared schedule from the main calendar
  *          without removing the local data or interrupting sync.
+ *   v5 — adds include_in_workload column to shared_schedule_table so the viewer
+ *          can decide per-schedule whether imported events contribute to Month
+ *          View workload intensity, independent from visibility.
  */
 @Database(
     entities = [
@@ -31,7 +34,7 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
         DayNoteEntity::class,
         SharedScheduleEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -65,6 +68,18 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL(
                     "ALTER TABLE shared_schedule_table " +
                         "ADD COLUMN is_visible_in_calendar INTEGER NOT NULL DEFAULT 1"
+                )
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Default 1 = counted in workload; preserves existing behaviour
+                // for already-imported schedules. Users can opt out per-schedule
+                // via the details screen.
+                database.execSQL(
+                    "ALTER TABLE shared_schedule_table " +
+                        "ADD COLUMN include_in_workload INTEGER NOT NULL DEFAULT 1"
                 )
             }
         }

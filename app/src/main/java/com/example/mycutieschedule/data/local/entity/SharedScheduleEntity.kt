@@ -68,6 +68,23 @@ data class SharedScheduleEntity(
     @ColumnInfo(name = "is_visible_in_calendar", defaultValue = "1")
     val isVisibleInCalendar: Boolean,
 
+    /**
+     * Local-only flag: should this schedule's events contribute to Month View
+     * workload intensity (the heatmap-style day coloring)?
+     *
+     * - true (default): events count toward day intensity along with personal events.
+     * - false: events still render on the calendar (if visible) but are excluded
+     *   from intensity / occupancy calculations.
+     *
+     * Independent from [isVisibleInCalendar]:
+     *   visible=true,  includeInWorkload=true  → shown + counted
+     *   visible=true,  includeInWorkload=false → shown, not counted
+     *   visible=false, includeInWorkload=*     → hidden (workload effect moot —
+     *                                            visibility filter runs first)
+     */
+    @ColumnInfo(name = "include_in_workload", defaultValue = "1")
+    val includeInWorkload: Boolean,
+
     /** UTC epoch milliseconds — when the current user first accessed this schedule. */
     @ColumnInfo(name = "accessed_at")
     val accessedAt: Long,

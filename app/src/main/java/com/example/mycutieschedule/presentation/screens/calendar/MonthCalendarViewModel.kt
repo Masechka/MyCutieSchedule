@@ -54,19 +54,36 @@ class MonthCalendarViewModel @Inject constructor(
                 getEventsForMonthUseCase(ym, userId),
                 shareRepository.observeImportedSchedules(userId),
             ) { events, sharedSchedules ->
-                // Drop events from hidden imported schedules BEFORE intensity
-                // calculation so workload heatmap doesn't count what the user
-                // chose not to see.
+                // ── Compute per-imported-schedule filter sets ────────────────
+                // Visibility filter runs first → hidden schedules never affect
+                // either rendering or workload (spec: "hidden schedules should
+                // never affect workload").
+                // Among schedules that ARE visible, includeInWorkload controls
+                // whether the events count toward intensity. Events from those
+                // schedules still appear on the calendar.
                 val hiddenSourceIds = sharedSchedules
                     .filterNot { it.isVisibleInCalendar }
                     .map { it.id }
                     .toSet()
+                val notCountedSourceIds = sharedSchedules
+                    .filter { it.isVisibleInCalendar && !it.includeInWorkload }
+                    .map { it.id }
+                    .toSet()
+
+                // Events that render on the calendar.
                 val visibleEvents = events.filterNot { e ->
                     e.isImported && e.sourceScheduleId in hiddenSourceIds
                 }
+                // Events that contribute to workload intensity — strict subset
+                // of [visibleEvents] (visible + counted).
+                val workloadEvents = visibleEvents.filterNot { e ->
+                    e.isImported && e.sourceScheduleId in notCountedSourceIds
+                }
 
-                val byDay     = visibleEvents.groupBy { it.startDateTime.toLocalDate() }
-                val intensity = byDay.mapValues { (_, dayEvents) ->
+                val byDay         = visibleEvents.groupBy { it.startDateTime.toLocalDate() }
+                val byDayWorkload = workloadEvents.groupBy { it.startDateTime.toLocalDate() }
+
+                val intensity = byDayWorkload.mapValues { (_, dayEvents) ->
                     val totalMinutes = dayEvents.sumOf {
                         ChronoUnit.MINUTES.between(it.startDateTime, it.endDateTime)
                             .coerceAtLeast(0L)

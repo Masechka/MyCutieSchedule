@@ -161,6 +161,33 @@ class SharedScheduleDetailsViewModel @Inject constructor(
     // ── Visibility toggle ─────────────────────────────────────────────────────
 
     /**
+     * Flips [SharedSchedule.includeInWorkload]. Cheap — single UPDATE statement.
+     * MonthCalendarViewModel reacts via its `observeImportedSchedules` flow
+     * and re-derives the intensity map without touching event storage.
+     */
+    fun toggleIncludeInWorkload() {
+        val schedule = _uiState.value.schedule ?: return
+        val newValue = !schedule.includeInWorkload
+        viewModelScope.launch {
+            when (val result = shareRepository
+                .setImportedScheduleIncludeInWorkload(schedule.id, newValue)
+            ) {
+                is Result.Success -> _events.send(
+                    SharedScheduleDetailsEvent.ShowSnackbar(
+                        if (newValue) "Учитывается в нагрузке"
+                        else          "Не учитывается в нагрузке"
+                    )
+                )
+                is Result.Error -> _events.send(
+                    SharedScheduleDetailsEvent.ShowSnackbar(
+                        "Не удалось изменить настройку: ${result.message ?: "неизвестная ошибка"}"
+                    )
+                )
+            }
+        }
+    }
+
+    /**
      * Flips [SharedSchedule.isVisibleInCalendar]. Cheap — single UPDATE statement.
      * Calendar ViewModels react via their `observeImportedSchedules` flow.
      */

@@ -155,6 +155,13 @@ class ShareRepositoryImpl @Inject constructor(
         sharedScheduleDao.updateVisibility(scheduleId, visible)
     }.toDomainResult()
 
+    override suspend fun setImportedScheduleIncludeInWorkload(
+        scheduleId: String,
+        include: Boolean,
+    ): Result<Unit> = runCatching {
+        sharedScheduleDao.updateIncludeInWorkload(scheduleId, include)
+    }.toDomainResult()
+
     /**
      * Combines two Room flows to build a live [SharedSchedule] list:
      *   - [SharedScheduleDao.observeAll] — schedule metadata

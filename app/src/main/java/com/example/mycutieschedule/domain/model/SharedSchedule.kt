@@ -44,6 +44,17 @@ data class SharedSchedule(
      * Never propagated to Firestore — this is a per-viewer preference.
      */
     val isVisibleInCalendar: Boolean = true,
+    /**
+     * Local-only flag: should events from this schedule contribute to Month
+     * View workload intensity (the day-color heatmap)?
+     * - true (default): minutes from this schedule add to day totals.
+     * - false: events still render (if [isVisibleInCalendar]), but intensity
+     *   is calculated as if this schedule didn't exist.
+     *
+     * Hidden schedules ([isVisibleInCalendar] = false) never affect workload
+     * regardless of this flag — visibility filter runs first.
+     */
+    val includeInWorkload: Boolean = true,
     val accessedAt: LocalDateTime = LocalDateTime.now(),
 ) {
     /** Name shown to the viewer — alias takes precedence over [ownerName]. */

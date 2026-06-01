@@ -54,6 +54,16 @@ interface ShareRepository {
     suspend fun setImportedScheduleVisible(scheduleId: String, visible: Boolean): Result<Unit>
 
     /**
+     * Toggles whether an imported schedule's events contribute to Month View
+     * workload intensity calculations. Independent of visibility; hidden
+     * schedules never contribute regardless of this flag.
+     */
+    suspend fun setImportedScheduleIncludeInWorkload(
+        scheduleId: String,
+        include: Boolean,
+    ): Result<Unit>
+
+    /**
      * Live stream of all schedules the current user has imported or is viewing.
      */
     fun observeImportedSchedules(userId: String): Flow<List<SharedSchedule>>

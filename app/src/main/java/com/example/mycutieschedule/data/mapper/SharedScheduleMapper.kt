@@ -22,6 +22,7 @@ fun SharedScheduleEntity.toDomain(events: List<Event> = emptyList()): SharedSche
         events              = events,
         isImported          = isImported,
         isVisibleInCalendar = isVisibleInCalendar,
+        includeInWorkload   = includeInWorkload,
         accessedAt          = accessedAt.toLocalDateTime(),
     )
 
@@ -35,5 +36,6 @@ fun SharedSchedule.toEntity(viewerId: String): SharedScheduleEntity =
         viewerId            = viewerId,
         isImported          = isImported,
         isVisibleInCalendar = isVisibleInCalendar,
+        includeInWorkload   = includeInWorkload,
         accessedAt          = accessedAt.toEpochMilli(),
     )

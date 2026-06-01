@@ -38,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -175,7 +176,10 @@ fun SharedScheduleDetailsScreen(
                     NotFoundState()
                 }
                 else -> {
-                    DetailsContent(schedule = uiState.schedule!!)
+                    DetailsContent(
+                        schedule          = uiState.schedule!!,
+                        onToggleWorkload  = viewModel::toggleIncludeInWorkload,
+                    )
                 }
             }
         }
@@ -225,7 +229,10 @@ fun SharedScheduleDetailsScreen(
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun DetailsContent(schedule: SharedSchedule) {
+private fun DetailsContent(
+    schedule: SharedSchedule,
+    onToggleWorkload: () -> Unit,
+) {
     val sortedEvents = remember(schedule.events) {
         schedule.events.sortedBy { it.startDateTime }
     }
@@ -242,6 +249,15 @@ private fun DetailsContent(schedule: SharedSchedule) {
         // ── Header card ─────────────────────────────────────────────────────
         item(key = "header") {
             HeaderCard(schedule = schedule)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // ── Per-schedule preferences ────────────────────────────────────────
+        item(key = "preferences") {
+            WorkloadInclusionCard(
+                schedule = schedule,
+                onToggle = onToggleWorkload,
+            )
             Spacer(modifier = Modifier.height(8.dp))
         }
 
@@ -323,6 +339,59 @@ private fun HeaderCard(schedule: SharedSchedule) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun WorkloadInclusionCard(
+    schedule: SharedSchedule,
+    onToggle: () -> Unit,
+) {
+    // Hidden schedules can never affect workload regardless of the flag, so the
+    // toggle is locked off while invisible — with a hint explaining why.
+    val isHidden = !schedule.isVisibleInCalendar
+    val effective = !isHidden && schedule.includeInWorkload
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors   = CardDefaults.cardColors(
+            containerColor = ImportedLight,
+            contentColor   = ImportedDark,
+        ),
+    ) {
+        Row(
+            modifier            = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment   = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text  = "Учитывать в нагрузке",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = ImportedDark,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text  = when {
+                        isHidden ->
+                            "Скрытые расписания никогда не учитываются в нагрузке"
+                        schedule.includeInWorkload ->
+                            "События добавляются к интенсивности дня в месячном виде"
+                        else ->
+                            "События отображаются, но не влияют на цвет дня"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ImportedMedium,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(
+                checked         = effective,
+                enabled         = !isHidden,
+                onCheckedChange = { onToggle() },
+            )
         }
     }
 }
