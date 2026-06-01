@@ -35,6 +35,14 @@ interface SharedScheduleDao {
     @Query("UPDATE shared_schedule_table SET local_alias_name = :alias WHERE id = :id")
     suspend fun updateAlias(id: String, alias: String?)
 
+    /**
+     * Toggles the calendar-visibility flag without touching the imported events
+     * themselves. Background sync continues to apply owner changes regardless
+     * of visibility — the flag is only consulted by calendar view filters.
+     */
+    @Query("UPDATE shared_schedule_table SET is_visible_in_calendar = :visible WHERE id = :id")
+    suspend fun updateVisibility(id: String, visible: Boolean)
+
     @Query("DELETE FROM shared_schedule_table WHERE id = :id")
     suspend fun deleteById(id: String)
 }

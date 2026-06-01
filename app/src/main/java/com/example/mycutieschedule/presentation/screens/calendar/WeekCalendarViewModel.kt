@@ -79,10 +79,22 @@ class WeekCalendarViewModel @Inject constructor(
                 getEventsForWeekUseCase(weekDate = monday, userId = userId),
                 shareRepository.observeImportedSchedules(userId),
             ) { events, sharedSchedules ->
-                val (startHour, endHour) = computeVisibleHourRange(events)
+                // ── Filter out events from hidden imported schedules ─────────
+                // The events list from the use case includes every owner+imported
+                // event for the user — we strip imported ones whose source schedule
+                // has been toggled hidden. Personal events are never affected.
+                val hiddenSourceIds = sharedSchedules
+                    .filterNot { it.isVisibleInCalendar }
+                    .map { it.id }
+                    .toSet()
+                val visibleEvents = events.filterNot { e ->
+                    e.isImported && e.sourceScheduleId in hiddenSourceIds
+                }
+
+                val (startHour, endHour) = computeVisibleHourRange(visibleEvents)
                 WeekCalendarUiState(
                     currentWeekMonday = monday,
-                    eventsByDay       = buildEventsByDay(monday, events),
+                    eventsByDay       = buildEventsByDay(monday, visibleEvents),
                     sourceLabels      = sharedSchedules.associate { it.id to it.displayName },
                     isLoading         = false,
                     visibleHourStart  = startHour,

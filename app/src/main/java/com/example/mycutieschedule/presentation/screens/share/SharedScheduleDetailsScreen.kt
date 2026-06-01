@@ -19,6 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -111,6 +113,18 @@ fun SharedScheduleDetailsScreen(
                 },
                 actions = {
                     if (uiState.schedule != null) {
+                        val visible = uiState.schedule!!.isVisibleInCalendar
+                        IconButton(
+                            onClick = viewModel::toggleVisibility,
+                            enabled = !uiState.isRemoving,
+                        ) {
+                            Icon(
+                                imageVector        = if (visible) Icons.Filled.Visibility
+                                                     else         Icons.Filled.VisibilityOff,
+                                contentDescription = if (visible) "Скрыть из календаря"
+                                                     else         "Показать в календаре",
+                            )
+                        }
                         IconButton(
                             onClick = viewModel::showRenameDialog,
                             enabled = !uiState.isRemoving,
@@ -291,6 +305,23 @@ private fun HeaderCard(schedule: SharedSchedule) {
                     style = MaterialTheme.typography.bodySmall,
                     color = ImportedMedium,
                 )
+                if (!schedule.isVisibleInCalendar) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector        = Icons.Filled.VisibilityOff,
+                            contentDescription = null,
+                            tint               = ImportedDark,
+                            modifier           = Modifier.size(14.dp),
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text  = "Скрыто из календаря",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ImportedDark,
+                        )
+                    }
+                }
             }
         }
     }

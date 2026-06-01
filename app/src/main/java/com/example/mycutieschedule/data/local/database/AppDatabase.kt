@@ -21,6 +21,9 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
  *          recurrence_group_id, is_recurrence_generated.
  *   v3 — adds local_alias_name column to shared_schedule_table so the viewer
  *          can rename imported schedules locally without affecting the owner.
+ *   v4 — adds is_visible_in_calendar column to shared_schedule_table so the
+ *          viewer can temporarily hide a shared schedule from the main calendar
+ *          without removing the local data or interrupting sync.
  */
 @Database(
     entities = [
@@ -28,7 +31,7 @@ import com.example.mycutieschedule.data.local.entity.SharedScheduleEntity
         DayNoteEntity::class,
         SharedScheduleEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -52,6 +55,17 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE shared_schedule_table ADD COLUMN local_alias_name TEXT")
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Default 1 = visible; existing imports keep their current
+                // calendar presence after upgrade.
+                database.execSQL(
+                    "ALTER TABLE shared_schedule_table " +
+                        "ADD COLUMN is_visible_in_calendar INTEGER NOT NULL DEFAULT 1"
+                )
             }
         }
     }

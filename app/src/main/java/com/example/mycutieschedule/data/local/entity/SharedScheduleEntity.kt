@@ -55,6 +55,19 @@ data class SharedScheduleEntity(
     @ColumnInfo(name = "is_imported", defaultValue = "0")
     val isImported: Boolean,
 
+    /**
+     * Local-only visibility toggle for the main calendar (Month/Week/Day views).
+     *
+     * - true (default): events from this schedule appear in the viewer's calendar
+     *   alongside personal events.
+     * - false: events stay in Room and continue to sync in the background, but
+     *   are filtered out of every calendar query and workload calculation.
+     *
+     * Never written to Firestore or visible to the owner — pure viewer preference.
+     */
+    @ColumnInfo(name = "is_visible_in_calendar", defaultValue = "1")
+    val isVisibleInCalendar: Boolean,
+
     /** UTC epoch milliseconds — when the current user first accessed this schedule. */
     @ColumnInfo(name = "accessed_at")
     val accessedAt: Long,

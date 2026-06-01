@@ -256,6 +256,30 @@ class SharedSchedulesViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Flips the calendar-visibility flag for a single imported schedule.
+     * Pure local toggle — `shareRepository.setImportedScheduleVisible` writes
+     * one Room column, calendar ViewModels react via their observe-imported
+     * flows. Sync continues regardless of visibility.
+     */
+    fun toggleScheduleVisibility(scheduleId: String, visible: Boolean) {
+        viewModelScope.launch {
+            when (val result = shareRepository.setImportedScheduleVisible(scheduleId, visible)) {
+                is Result.Success -> _events.send(
+                    SharedSchedulesEvent.ShowSnackbar(
+                        if (visible) "Расписание видно в календаре"
+                        else         "Расписание скрыто из календаря"
+                    )
+                )
+                is Result.Error -> _events.send(
+                    SharedSchedulesEvent.ShowSnackbar(
+                        "Не удалось переключить видимость: ${result.message ?: "неизвестная ошибка"}"
+                    )
+                )
+            }
+        }
+    }
+
     fun removeSchedule(scheduleId: String) {
         val uid = userId ?: return
         viewModelScope.launch {

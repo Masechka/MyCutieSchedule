@@ -29,6 +29,11 @@ sealed class SharedScheduleDetailsEvent {
     data class ShowSnackbar(val message: String) : SharedScheduleDetailsEvent()
 }
 
+/**
+ * Toggles whether this schedule's events appear on the main calendar.
+ * Pure local preference — does not affect background sync.
+ */
+
 /** Local-rename dialog state. Lives entirely in the ViewModel so config changes don't reset it. */
 data class RenameDialogState(
     val isVisible: Boolean   = false,
@@ -149,6 +154,32 @@ class SharedScheduleDetailsViewModel @Inject constructor(
                         "Не удалось переименовать: ${result.message ?: "неизвестная ошибка"}"
                     ))
                 }
+            }
+        }
+    }
+
+    // ── Visibility toggle ─────────────────────────────────────────────────────
+
+    /**
+     * Flips [SharedSchedule.isVisibleInCalendar]. Cheap — single UPDATE statement.
+     * Calendar ViewModels react via their `observeImportedSchedules` flow.
+     */
+    fun toggleVisibility() {
+        val schedule = _uiState.value.schedule ?: return
+        val newVisible = !schedule.isVisibleInCalendar
+        viewModelScope.launch {
+            when (val result = shareRepository.setImportedScheduleVisible(schedule.id, newVisible)) {
+                is Result.Success -> _events.send(
+                    SharedScheduleDetailsEvent.ShowSnackbar(
+                        if (newVisible) "Расписание видно в календаре"
+                        else            "Расписание скрыто из календаря"
+                    )
+                )
+                is Result.Error -> _events.send(
+                    SharedScheduleDetailsEvent.ShowSnackbar(
+                        "Не удалось переключить видимость: ${result.message ?: "неизвестная ошибка"}"
+                    )
+                )
             }
         }
     }

@@ -17,6 +17,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -96,38 +97,58 @@ class DayViewViewModel @Inject constructor(
     init {
         val userId = authRepository.getCurrentUser()?.id
         if (userId != null) {
-            observeEvents(userId)
+            observeEventsAndSchedules(userId)
             observeNote(userId)
-            observeImportedScheduleLabels(userId)
         } else {
             _uiState.update { it.copy(isLoadingEvents = false) }
         }
     }
 
-    private fun observeImportedScheduleLabels(userId: String) {
-        viewModelScope.launch {
-            shareRepository.observeImportedSchedules(userId).collect { schedules ->
-                _uiState.update {
-                    it.copy(sourceLabels = schedules.associate { s -> s.id to s.displayName })
-                }
-            }
-        }
-    }
-
     // ── Data observers ────────────────────────────────────────────────────────
 
-    private fun observeEvents(userId: String) {
+    /**
+     * Single combined observer for events + imported-schedule metadata.
+     *
+     * Imported schedules contribute two things:
+     *   1. `sourceLabels` — labels for event cards belonging to imported events.
+     *   2. `hiddenSourceIds` — set of share-codes flagged
+     *      [SharedSchedule.isVisibleInCalendar] = false. Events whose
+     *      `sourceScheduleId` is in this set are filtered out BEFORE overlap
+     *      layout and visible-hour computation — so hidden schedules genuinely
+     *      vanish from the timeline without affecting workload geometry.
+     */
+    private fun observeEventsAndSchedules(userId: String) {
         viewModelScope.launch {
-            getEventsForDayUseCase(date, userId).collect { events ->
-                val sorted     = events.sortedWith(compareBy({ it.startDateTime }, { it.endDateTime }))
+            combine(
+                getEventsForDayUseCase(date, userId),
+                shareRepository.observeImportedSchedules(userId),
+            ) { events, sharedSchedules ->
+                val hiddenSourceIds = sharedSchedules
+                    .filterNot { it.isVisibleInCalendar }
+                    .map { it.id }
+                    .toSet()
+                val visibleEvents = events.filterNot { e ->
+                    e.isImported && e.sourceScheduleId in hiddenSourceIds
+                }
+
+                val sorted     = visibleEvents
+                    .sortedWith(compareBy({ it.startDateTime }, { it.endDateTime }))
                 val positioned = computeOverlapLayout(sorted)
                 val (startH, endH) = computeVisibleHourRange(sorted)
+
+                Triple(
+                    positioned,
+                    startH to endH,
+                    sharedSchedules.associate { it.id to it.displayName },
+                )
+            }.collect { (positioned, hourRange, labels) ->
                 _uiState.update {
                     it.copy(
                         positionedEvents = positioned,
+                        sourceLabels     = labels,
                         isLoadingEvents  = false,
-                        visibleHourStart = startH,
-                        visibleHourEnd   = endH,
+                        visibleHourStart = hourRange.first,
+                        visibleHourEnd   = hourRange.second,
                     )
                 }
             }

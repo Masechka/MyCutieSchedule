@@ -4,15 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mycutieschedule.domain.model.Event
 import com.example.mycutieschedule.domain.repository.AuthRepository
+import com.example.mycutieschedule.domain.repository.ShareRepository
 import com.example.mycutieschedule.domain.usecase.event.GetEventsForMonthUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import java.time.YearMonth
@@ -37,6 +38,7 @@ data class MonthCalendarUiState(
 class MonthCalendarViewModel @Inject constructor(
     private val getEventsForMonthUseCase: GetEventsForMonthUseCase,
     private val authRepository: AuthRepository,
+    private val shareRepository: ShareRepository,
 ) : ViewModel() {
 
     private val _yearMonth = MutableStateFlow(YearMonth.now())
@@ -48,23 +50,36 @@ class MonthCalendarViewModel @Inject constructor(
                 ?: return@flatMapLatest flowOf(
                     MonthCalendarUiState(currentYearMonth = ym, isLoading = false),
                 )
-            getEventsForMonthUseCase(ym, userId)
-                .map { events ->
-                    val byDay     = events.groupBy { it.startDateTime.toLocalDate() }
-                    val intensity = byDay.mapValues { (_, dayEvents) ->
-                        val totalMinutes = dayEvents.sumOf {
-                            ChronoUnit.MINUTES.between(it.startDateTime, it.endDateTime)
-                                .coerceAtLeast(0L)
-                        }
-                        (totalMinutes.toFloat() / INTENSITY_MAX_MINUTES).coerceIn(0f, 1f)
-                    }
-                    MonthCalendarUiState(
-                        currentYearMonth = ym,
-                        eventsByDay      = byDay,
-                        dayIntensity     = intensity,
-                        isLoading        = false,
-                    )
+            combine(
+                getEventsForMonthUseCase(ym, userId),
+                shareRepository.observeImportedSchedules(userId),
+            ) { events, sharedSchedules ->
+                // Drop events from hidden imported schedules BEFORE intensity
+                // calculation so workload heatmap doesn't count what the user
+                // chose not to see.
+                val hiddenSourceIds = sharedSchedules
+                    .filterNot { it.isVisibleInCalendar }
+                    .map { it.id }
+                    .toSet()
+                val visibleEvents = events.filterNot { e ->
+                    e.isImported && e.sourceScheduleId in hiddenSourceIds
                 }
+
+                val byDay     = visibleEvents.groupBy { it.startDateTime.toLocalDate() }
+                val intensity = byDay.mapValues { (_, dayEvents) ->
+                    val totalMinutes = dayEvents.sumOf {
+                        ChronoUnit.MINUTES.between(it.startDateTime, it.endDateTime)
+                            .coerceAtLeast(0L)
+                    }
+                    (totalMinutes.toFloat() / INTENSITY_MAX_MINUTES).coerceIn(0f, 1f)
+                }
+                MonthCalendarUiState(
+                    currentYearMonth = ym,
+                    eventsByDay      = byDay,
+                    dayIntensity     = intensity,
+                    isLoading        = false,
+                )
+            }
         }
         .stateIn(
             scope        = viewModelScope,

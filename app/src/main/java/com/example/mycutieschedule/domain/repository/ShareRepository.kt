@@ -46,6 +46,14 @@ interface ShareRepository {
     suspend fun updateImportedScheduleAlias(scheduleId: String, alias: String?): Result<Unit>
 
     /**
+     * Toggles whether an imported schedule's events render in the main calendar.
+     * Hidden schedules remain in local storage and continue to sync in the
+     * background — they are simply excluded from calendar queries by the
+     * ViewModels until shown again.
+     */
+    suspend fun setImportedScheduleVisible(scheduleId: String, visible: Boolean): Result<Unit>
+
+    /**
      * Live stream of all schedules the current user has imported or is viewing.
      */
     fun observeImportedSchedules(userId: String): Flow<List<SharedSchedule>>

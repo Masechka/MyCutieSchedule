@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -50,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -189,9 +192,15 @@ fun SharedSchedulesScreen(
                         key   = { it.id },
                     ) { schedule ->
                         ImportedScheduleCard(
-                            schedule = schedule,
-                            onClick  = { viewModel.onScheduleClick(schedule.id) },
-                            onRemove = { viewModel.removeSchedule(schedule.id) },
+                            schedule           = schedule,
+                            onClick            = { viewModel.onScheduleClick(schedule.id) },
+                            onRemove           = { viewModel.removeSchedule(schedule.id) },
+                            onToggleVisibility = {
+                                viewModel.toggleScheduleVisibility(
+                                    scheduleId = schedule.id,
+                                    visible    = !schedule.isVisibleInCalendar,
+                                )
+                            },
                         )
                     }
                 }
@@ -322,9 +331,16 @@ private fun ImportedScheduleCard(
     schedule: SharedSchedule,
     onClick: () -> Unit,
     onRemove: () -> Unit,
+    onToggleVisibility: () -> Unit,
 ) {
+    // Hidden schedules render at reduced opacity so they're visually demoted in
+    // the list without being mistaken for something the user lost or broken.
+    val cardAlpha = if (schedule.isVisibleInCalendar) 1f else 0.55f
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(cardAlpha),
         colors   = CardDefaults.cardColors(
             containerColor = ImportedLight,
             contentColor   = ImportedDark,
@@ -359,9 +375,25 @@ private fun ImportedScheduleCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text  = "${schedule.events.size} ${eventCountWord(schedule.events.size)} • Код: ${schedule.shareCode}",
+                    text  = buildString {
+                        append("${schedule.events.size} ${eventCountWord(schedule.events.size)}")
+                        append(" • Код: ${schedule.shareCode}")
+                        if (!schedule.isVisibleInCalendar) append(" • скрыто")
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = ImportedMedium,
+                )
+            }
+
+            // Quick visibility toggle — saves a trip into details just to flip
+            // the eye flag.
+            IconButton(onClick = onToggleVisibility) {
+                Icon(
+                    imageVector        = if (schedule.isVisibleInCalendar) Icons.Filled.Visibility
+                                         else                              Icons.Filled.VisibilityOff,
+                    contentDescription = if (schedule.isVisibleInCalendar) "Скрыть из календаря"
+                                         else                              "Показать в календаре",
+                    tint               = ImportedDark,
                 )
             }
 
