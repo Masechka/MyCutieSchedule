@@ -494,13 +494,7 @@ private fun EnterShareCodeDialog(
 //  Helpers
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** Russian plural for "event" — 1 событие, 2-4 события, 5+ событий. */
-private fun eventCountWord(count: Int): String {
-    val mod100 = count % 100
-    if (mod100 in 11..14) return "событий"
-    return when (count % 10) {
-        1       -> "событие"
-        2, 3, 4 -> "события"
-        else    -> "событий"
-    }
-}
+// Локальный алиас на общую утилиту склонения — единый источник истины
+// для русской плюрализации хранится в core/util/RussianPlurals.kt.
+private fun eventCountWord(count: Int): String =
+    com.example.mycutieschedule.core.util.eventCountWordRu(count)

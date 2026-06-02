@@ -28,15 +28,26 @@ import javax.inject.Inject
 private const val DAY_DEFAULT_START_HOUR = 7
 private const val DAY_DEFAULT_END_HOUR   = 21
 
-// ── Layout model ──────────────────────────────────────────────────────────────
+// ── Модель раскладки ──────────────────────────────────────────────────────────
 
 /**
- * Pre-computed overlap-layout position for a single event within the day column.
- * Defined here (rather than shared with WeekCalendarViewModel) to keep each
- * screen self-contained.
+ * Заранее рассчитанная позиция события в колонке дня для решения проблемы
+ * перекрывающихся событий (например, два звонка одновременно).
  *
- * @param columnIndex 0-based column within the overlap group.
- * @param columnCount Total parallel columns required by the group.
+ * Один и тот же day-column может быть разбит на несколько параллельных
+ * под-колонок, если в момент времени T идут несколько событий. Каждое
+ * событие получает свой [columnIndex] (0-based) и общий [columnCount]
+ * (сколько всего параллельных колонок в группе пересечений).
+ *
+ * UI рисует событие по горизонтали как:
+ *   left  = parentWidth × columnIndex / columnCount
+ *   width = parentWidth / columnCount
+ *
+ * Намеренно дублирует структуру [WeekCalendarViewModel.PositionedEvent],
+ * чтобы каждый экран был самодостаточным и независимым.
+ *
+ * @param columnIndex 0-based индекс колонки внутри группы пересечений.
+ * @param columnCount Общее число параллельных колонок в группе.
  */
 data class DayPositionedEvent(
     val event: Event,

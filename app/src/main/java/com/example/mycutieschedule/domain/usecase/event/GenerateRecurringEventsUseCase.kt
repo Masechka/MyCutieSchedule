@@ -15,39 +15,52 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// ── Generation horizons — tuned per recurrence type ───────────────────────────
-// Shorter horizons for high-frequency types keep DB/Firebase usage proportional
-// to the actual scheduling density while still providing a comfortable look-ahead.
+// ── Горизонты генерации — индивидуальные для каждого типа повтора ─────────────
+// Чем выше частота повторений, тем короче горизонт: это сохраняет нагрузку
+// на БД и Firestore пропорционально реальной плотности расписания,
+// одновременно обеспечивая комфортный «запас вперёд» для пользователя.
 
-/** Daily recurrence: next 3 months (~90 events max). */
+/** Ежедневный повтор: следующие 3 месяца (≈ 90 событий максимум). */
 private const val HORIZON_DAILY_MONTHS = 3L
 
-/** Weekly / custom-days recurrence: next 6 months (~26 events max per weekday). */
+/** Еженедельный / по дням недели: 6 месяцев (≈ 26 событий на каждый день недели). */
 private const val HORIZON_WEEKLY_MONTHS = 6L
 
-/** Monthly, yearly, and custom-date recurrence: next 12 months. */
+/** Ежемесячный, ежегодный, конкретные даты: 12 месяцев. */
 private const val HORIZON_DEFAULT_MONTHS = 12L
 
-/** Absolute safety cap — no series ever exceeds this many generated rows. */
+/** Жёсткий потолок безопасности — ни одна серия не превышает этот лимит. */
 private const val MAX_OCCURRENCES = 500
 
 /**
- * Generates real database rows for every future occurrence of a recurring [masterEvent].
+ * Use Case для генерации повторяющихся событий.
  *
- * Each occurrence:
- * - has a unique UUID
- * - shares [Event.recurrenceGroupId] with the master
- * - has [Event.isRecurrenceGenerated] = true
- * - copies title, description, color, reminder, recurrence from the master
- * - adjusts startDateTime / endDateTime to the occurrence date (same time, same duration)
+ * Берёт «мастер»-событие [masterEvent] с заполненным [Recurrence] и создаёт
+ * реальные строки в БД для каждого будущего экземпляра серии в пределах
+ * горизонта генерации.
  *
- * The master's own start date is excluded — it already exists as its own row.
+ * Каждый сгенерированный экземпляр:
+ * - имеет уникальный UUID
+ * - разделяет [Event.recurrenceGroupId] с мастером (для последующего
+ *   массового редактирования / удаления цепочки)
+ * - имеет флаг [Event.isRecurrenceGenerated] = true
+ * - копирует title, description, color, reminder, recurrence из мастера
+ * - смещает startDateTime/endDateTime на дату экземпляра при сохранении
+ *   того же времени дня и той же длительности
  *
- * The date-generation work runs on [Dispatchers.Default] to keep the Main thread free;
- * the subsequent [EventRepository.addAllEvents] call handles its own IO dispatching.
+ * Дата самого мастера НЕ включается в список — мастер уже существует
+ * в БД как отдельная строка.
  *
- * Call after [AddEventUseCase] or [UpdateEventUseCase] succeeds.
- * Before calling during an update, delete stale occurrences via [DeleteRecurringEventUseCase].
+ * Тяжёлая CPU-работа по перебору дат выполняется на [Dispatchers.Default],
+ * чтобы не блокировать Main-поток. Последующий вызов
+ * [EventRepository.addAllEvents] сам диспетчеризует IO.
+ *
+ * Когда вызывать:
+ * - **После создания** ([AddEventUseCase] success) — генерирует начальный
+ *   набор экземпляров.
+ * - **После обновления** ([UpdateEventUseCase] success) — но СНАЧАЛА
+ *   удалить устаревшие экземпляры через [DeleteRecurringEventUseCase],
+ *   иначе будут дубли с обновлёнными правилами.
  */
 class GenerateRecurringEventsUseCase @Inject constructor(
     private val repository: EventRepository,

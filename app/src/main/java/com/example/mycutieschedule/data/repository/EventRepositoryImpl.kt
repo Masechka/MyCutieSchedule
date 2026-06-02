@@ -23,19 +23,33 @@ import java.time.LocalDateTime
 import javax.inject.Inject
 
 /**
- * Offline-first implementation of [EventRepository].
+ * Реализация [EventRepository] по принципу **offline-first**.
  *
- * **Read path:** Room only — always instant, always available offline.
- *   [EventSyncManager] keeps Room up-to-date from Firestore in the background.
+ * Архитектурное решение: Room — единственный источник истины для UI.
+ * Firestore используется как зеркало для синхронизации между устройствами,
+ * но никогда не читается напрямую из UI. Это даёт мгновенный отклик и
+ * корректную работу без сети.
  *
- * **Write path (single events):** Room first → Firestore synchronously (1 network call, fast).
+ * **Путь чтения:** только Room — всегда мгновенно, всегда доступно оффлайн.
+ *   [EventSyncManager] в фоне поддерживает Room в актуальном состоянии
+ *   через Firestore snapshot listener.
  *
- * **Write path (batch — recurrence generation / deletion):**
- *   Room is updated atomically and the suspend function returns immediately.
- *   Firestore sync is then dispatched as a fire-and-forget job on [applicationScope]
- *   (application-scoped, survives ViewModel clearing) so the UI can navigate away
- *   without waiting for N network round-trips.
- *   If a Firestore write fails it is logged; [EventSyncManager] reconciles on reconnect.
+ * **Путь записи (одиночные события):**
+ *   Room сначала, затем Firestore синхронно (один сетевой вызов, быстро).
+ *   Если Firestore-запись падает, ошибка логируется, но UI считает операцию
+ *   успешной — синхронизация довосстановится через [EventSyncManager]
+ *   при следующем соединении.
+ *
+ * **Путь записи (пакетный — генерация повторов / удаление цепочки):**
+ *   Room обновляется атомарно, suspend-функция возвращается мгновенно.
+ *   Firestore-синхронизация запускается как fire-and-forget на
+ *   [applicationScope] (живёт пока живёт процесс — переживает закрытие
+ *   ViewModel), чтобы UI мог уйти с экрана не дожидаясь N сетевых вызовов.
+ *
+ * **Напоминания ([reminderScheduler]):**
+ *   На каждый add/update/delete вызывается соответствующий schedule/cancel,
+ *   чтобы локальный AlarmManager всегда отражал актуальное состояние
+ *   событий в Room. Идемпотентно — повторный schedule заменяет предыдущий.
  */
 class EventRepositoryImpl @Inject constructor(
     private val eventDao: EventDao,

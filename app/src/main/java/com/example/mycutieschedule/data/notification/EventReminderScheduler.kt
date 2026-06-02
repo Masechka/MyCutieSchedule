@@ -15,34 +15,37 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Schedules + cancels OS-level alarms that fire the [ReminderReceiver] when
- * an event's reminder time arrives.
+ * Планирует и отменяет OS-уровневые алармы [AlarmManager], которые запускают
+ * [ReminderReceiver] в момент срабатывания напоминания о событии.
  *
- * Algorithm:
- *   triggerEpoch = (event.startDateTime - reminder.minutesBefore) interpreted
- *                  as a wall-clock time in the device's current zone.
+ * **Алгоритм расчёта времени срабатывания:**
+ *   triggerEpoch = (event.startDateTime − reminder.minutesBefore),
+ *   интерпретированное как wall-clock-время в текущей таймзоне устройства.
  *
- * Storage convention: [Event.startDateTime] is a naive [java.time.LocalDateTime]
- * — the project stores wall-clock time. We resolve it against
- * [ZoneId.systemDefault] here because AlarmManager.RTC_WAKEUP demands real
- * epoch milliseconds in the device's actual timezone.
+ * **Соглашение о хранении:** [Event.startDateTime] — это «голый»
+ * [java.time.LocalDateTime] (без таймзоны), проект хранит wall-clock-время
+ * (то, что видит пользователь). Здесь мы преобразуем его через
+ * [ZoneId.systemDefault], потому что AlarmManager.RTC_WAKEUP требует
+ * реальные epoch milliseconds в фактической таймзоне устройства.
  *
- * Battery & exactness:
- *   - On Android 12+ (S+) we try `setExactAndAllowWhileIdle` because reminders
- *     are time-sensitive and the calendar use case qualifies for
- *     USE_EXACT_ALARM (auto-granted on 13+).
- *   - On Android 12 the user MAY revoke SCHEDULE_EXACT_ALARM in system
- *     Settings. `canScheduleExactAlarms()` is checked; on denial we degrade
- *     to `setAndAllowWhileIdle` (Doze-friendly, accuracy ~few minutes).
- *   - On pre-S devices `setExactAndAllowWhileIdle` is unconditionally available.
+ * **Батарея и точность:**
+ *   - Android 12+ (S+): пробуем `setExactAndAllowWhileIdle`, потому что
+ *     напоминания time-sensitive, а календарные приложения подпадают под
+ *     `USE_EXACT_ALARM` (авто-выдан на 13+).
+ *   - Android 12: пользователь МОЖЕТ отозвать `SCHEDULE_EXACT_ALARM` в
+ *     системных настройках. Проверяем `canScheduleExactAlarms()`; на отказе
+ *     gracefully падаем на `setAndAllowWhileIdle` (Doze-friendly,
+ *     точность ~несколько минут).
+ *   - Pre-S: `setExactAndAllowWhileIdle` доступен безусловно.
  *
- * Idempotent: re-scheduling the same eventId replaces the previous alarm via
- * [PendingIntent.FLAG_UPDATE_CURRENT]. Callers can `schedule(event)` after
- * every edit without checking what was already scheduled.
+ * **Идемпотентность:** повторный schedule с тем же eventId заменяет
+ * предыдущий аларм через [PendingIntent.FLAG_UPDATE_CURRENT]. Поэтому
+ * репозиторий может вызывать `schedule(event)` после каждого edit без
+ * предварительной проверки текущего состояния.
  *
- * NEVER throws for routine reasons (past trigger, no reminder, wrong type,
- * permission revoked) — just logs and returns. Failure to schedule must not
- * crash the save path.
+ * **Никогда не throws** для рутинных причин (триггер в прошлом, нет
+ * напоминания, неверный тип, отозванное разрешение) — только лог и return.
+ * Падение планирования не должно крашить save-флоу пользователя.
  */
 @Singleton
 class EventReminderScheduler @Inject constructor(

@@ -22,45 +22,58 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Keeps Room in sync with Firestore by subscribing to the authenticated user's
- * event collection and applying every snapshot into the local database.
+ * Поддерживает Room в синхронизированном состоянии с Firestore путём подписки
+ * на event-коллекцию аутентифицированного пользователя.
  *
- * **Lifecycle:**
- * [start] is called once from [com.example.mycutieschedule.MyCutieScheduleApp.onCreate].
- * It launches a long-lived coroutine (scoped to the application) that:
- *   1. Observes [AuthRepository.observeAuthState], de-duplicated by user ID.
- *   2. On [AuthState.Authenticated] → bootstraps with an explicit one-shot fetch,
- *      then starts a Firestore snapshot listener.
- *   3. On [AuthState.Unauthenticated]  → cancels the listener.
+ * Каждый snapshot из Firestore применяется к локальной БД с разрешением
+ * конфликтов по принципу last-write-wins (`updatedAt`-сравнение).
  *
- * **Why both a one-shot fetch AND a snapshot listener?**
- * The snapshot listener serves cached data first, then waits for the server.
- * On a fresh sign-in or after install, the cache is empty and there's no signal
- * for "the server reply arrived" until events actually exist. The explicit
- * [FirestoreEventDataSource.fetchOnce] call surfaces:
- *   - Permission failures (security rules) — visible as a [Result.Error] instead
- *     of silently nothing arriving.
- *   - Network failures — same.
- *   - An empty Firestore (legitimate "zero events for this user") — distinct
- *     from "we didn't reach the server yet".
- * It also primes the cache so subsequent UI reads aren't delayed.
+ * **Жизненный цикл:**
+ * [start] вызывается один раз из
+ * [com.example.mycutieschedule.MyCutieScheduleApp.onCreate]. Запускается
+ * долгоживущая корутина в [appScope], которая:
+ *   1. Подписывается на [AuthRepository.observeAuthState] и
+ *      дедуплицирует по user-ID через `distinctUntilChanged`, чтобы избежать
+ *      повторных перезапусков на одном и том же пользователе.
+ *   2. При [AuthState.Authenticated] → выполняет bootstrap (одноразовый
+ *      `fetchOnce`), затем регистрирует Firestore snapshot listener.
+ *   3. При [AuthState.Unauthenticated] → отменяет listener.
  *
- * **Conflict resolution — last-write-wins:**
- * Each remote event is compared to its local Room counterpart by `updatedAt`.
- * - Remote newer → overwrite Room (another device made a change).
- * - Local newer  → skip (local write hasn't reached Firestore yet).
- * - No local row → insert (new event from another device).
+ * **Зачем И one-shot fetch, И snapshot listener?**
+ * Snapshot listener сначала выдаёт данные из кэша, затем ждёт сервер.
+ * На свежем входе или после переустановки кэш пуст, и нет сигнала
+ * «ответ от сервера получен» до тех пор, пока события не появятся.
+ * Явный [FirestoreEventDataSource.fetchOnce] делает видимыми:
+ *   - Ошибки прав (Security Rules) — приходят как [Result.Error]
+ *     вместо тихого отсутствия данных.
+ *   - Сетевые ошибки — аналогично.
+ *   - Пустой Firestore (легитимный «ноль событий») — отличимо от
+ *     «мы ещё не дозвонились до сервера».
+ * Кроме того, fetchOnce разогревает кэш, чтобы последующие UI-чтения
+ * не ждали загрузки.
  *
- * **Delete propagation:**
- * Events present locally but missing from the snapshot are deleted — with a
- * 60-second safety window: events updated locally in the last minute are NEVER
- * deleted by sync, so a just-saved local write can't be wiped by a stale or
- * server-rejected snapshot.
+ * **Разрешение конфликтов — last-write-wins:**
+ * Каждое событие из снапшота сравнивается с локальной копией по `updatedAt`.
+ * - Удалённое новее → перезаписываем Room (правка с другого устройства).
+ * - Локальное новее → пропускаем (наш недавний save ещё не доехал до облака).
+ * - Локальной строки нет → INSERT (новое событие с другого устройства).
+ *
+ * **Распространение удалений:**
+ * События, которые есть локально, но отсутствуют в снапшоте, удаляются —
+ * но с **60-секундным safety-window**: записи, изменённые локально в
+ * последнюю минуту, никогда не удаляются sync'ом. Это защищает только что
+ * сохранённую запись от стирания устаревшим или отклонённым сервером
+ * снапшотом (например, при PERMISSION_DENIED).
+ *
+ * **Напоминания:**
+ * После insertAll() мы заново планируем алармы для всех upserted-событий
+ * через [reminderScheduler]. Это обеспечивает доставку напоминаний на
+ * **других** устройствах, куда события прилетают только через sync.
  *
  * **Scope:**
- * Uses [@ApplicationScope] — a [CoroutineScope] that lives as long as the
- * process. [kotlinx.coroutines.SupervisorJob] ensures one failed sync doesn't
- * cancel the watcher.
+ * Использует [@ApplicationScope] — [CoroutineScope], живущий столько же,
+ * сколько процесс. [kotlinx.coroutines.SupervisorJob] гарантирует, что
+ * падение одного sync-job'а не убивает watcher целиком.
  */
 @Singleton
 class EventSyncManager @Inject constructor(

@@ -23,29 +23,34 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Keeps Room mirrors of *imported* shared schedules in sync with the owners'
- * Firestore data.
+ * Поддерживает локальные Room-зеркала **импортированных** расписаний в
+ * актуальном состоянии относительно Firestore-данных их владельцев.
  *
- * Architecture:
- *   - One coroutine per imported schedule registers a Firestore snapshot
- *     listener on `users/{ownerId}/events`. Whenever the owner edits, adds,
- *     or deletes an event, the listener fires and the local Room mirror is
- *     reconciled.
- *   - The set of "imported schedules to watch" is itself reactive — observed
- *     via [SharedScheduleDao.observeAll]. Adding or removing an imported
- *     schedule transparently starts/stops its listener.
+ * **Архитектура:**
+ *   - Одна корутина на каждое импортированное расписание регистрирует
+ *     Firestore snapshot listener на `users/{ownerId}/events`. Когда
+ *     владелец редактирует, добавляет или удаляет событие — listener
+ *     срабатывает, и локальное зеркало приводится в соответствие.
+ *   - Набор «импортированных расписаний для наблюдения» сам реактивен —
+ *     наблюдается через [SharedScheduleDao.observeAll]. Добавление или
+ *     удаление расписания прозрачно запускает / останавливает его listener
+ *     через [reconcileWatchers].
  *
- * Why a separate manager from [EventSyncManager]?
- *   [EventSyncManager] syncs the *viewer's own* events (`users/{viewerId}`).
- *   This manager syncs *imported* events that live under another user's
- *   subcollection. The two writes shouldn't share a single coroutine because
- *   they listen to entirely different Firestore paths and have different
- *   ownership rules (viewer never writes, only reads).
+ * **Почему отдельный менеджер от [EventSyncManager]?**
+ *   [EventSyncManager] синхронизирует **собственные** события viewer'а
+ *   (`users/{viewerId}/events`). Этот менеджер синхронизирует
+ *   **импортированные** события, которые физически живут в subcollection
+ *   ДРУГОГО пользователя. Разные пути Firestore, разные правила доступа
+ *   (viewer только читает, никогда не пишет в чужой subcollection) —
+ *   объединение в одну корутину запутало бы логику и сделало
+ *   отладку прав сложнее.
  *
- * Lifecycle:
- *   [start] is called once from [com.example.mycutieschedule.MyCutieScheduleApp.onCreate].
- *   On sign-out, all per-schedule listeners are cancelled; on sign-in the
- *   manager picks up the new viewer's imported list.
+ * **Жизненный цикл:**
+ *   [start] вызывается один раз из
+ *   [com.example.mycutieschedule.MyCutieScheduleApp.onCreate]. При sign-out
+ *   все per-schedule listener'ы отменяются; при sign-in менеджер
+ *   подхватывает список импортированных расписаний нового viewer'а
+ *   и поднимает свежие listener'ы.
  */
 @Singleton
 class SharedSchedulesSyncManager @Inject constructor(

@@ -571,13 +571,8 @@ private val DateHeaderFmt: DateTimeFormatter =
 private fun formatDateHeader(date: LocalDate): String =
     DateHeaderFmt.format(date).replaceFirstChar { it.uppercase() }
 
-/** Russian plural for "event" — 1 событие, 2-4 события, 5+ событий. */
-private fun eventCountWord(count: Int): String {
-    val mod100 = count % 100
-    if (mod100 in 11..14) return "событий"
-    return when (count % 10) {
-        1       -> "событие"
-        2, 3, 4 -> "события"
-        else    -> "событий"
-    }
-}
+// Локальный алиас на общую утилиту склонения (core/util/RussianPlurals.kt),
+// чтобы не менять call-sites внутри файла. Логика склонения раньше
+// дублировалась в SharedSchedulesScreen — теперь источник один.
+private fun eventCountWord(count: Int): String =
+    com.example.mycutieschedule.core.util.eventCountWordRu(count)

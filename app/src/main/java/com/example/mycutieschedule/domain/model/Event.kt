@@ -1,36 +1,53 @@
 package com.example.mycutieschedule.domain.model
 
+import androidx.compose.runtime.Stable
 import java.time.LocalDateTime
 
 /**
- * Core domain model representing a calendar event.
+ * Доменная модель события в календаре.
  *
- * Business rules enforced by use cases (not here):
- *   - [title] must not be blank
- *   - [startDateTime] must be strictly before [endDateTime]
- *   - [color] must be one of the predefined [EventColor] values
+ * Все поля `val` — модель полностью иммутабельная. Аннотация [Stable]
+ * сообщает Compose-компилятору, что инстансы можно сравнивать как value-типы
+ * (равные по `equals` события дают равный output композиции). Это позволяет
+ * сильно сократить количество ненужных рекомпозиций при скролле списков
+ * событий в Day / Week / Month View — Compose пропускает повторное
+ * выполнение функций-композаблов, в которые передаются неизменившиеся Event'ы.
  *
- * Firestore path: events/{id}
- * Room table:     event_table
+ * Бизнес-правила (проверяются в use case-ах, не здесь):
+ *   - [title] не должно быть пустым
+ *   - [startDateTime] строго раньше [endDateTime]
+ *   - [color] — одно из значений [EventColor]
  *
- * @param id               Unique identifier. Empty string = new event (assigned by AddEventUseCase).
- * @param title            Short name displayed on the calendar tile.
- * @param description      Optional longer description shown in the event detail screen.
- * @param startDateTime    Inclusive start.
- * @param endDateTime      Exclusive end. Must be after [startDateTime].
- * @param color            One of the predefined pink shades.
- * @param reminder         Optional notification reminder before the event.
- * @param recurrence       Optional repeat rule. Null = single occurrence.
- * @param ownerId                 Firebase Auth UID of the event creator.
- * @param isImported              True if this event was copied from another user's schedule.
- * @param sourceScheduleId        Share code / schedule ID this was imported from (if [isImported]).
- * @param recurrenceGroupId       Shared ID linking all events in a recurrence chain (master + generated).
- *                                Null for one-off events that don't repeat.
- * @param isRecurrenceGenerated   True when this event was automatically generated from a master recurring event.
- *                                The master itself has this set to false.
- * @param createdAt               Creation timestamp.
- * @param updatedAt               Last update timestamp — used for Firestore conflict resolution.
+ * Firestore: события хранятся в подколлекции `users/{ownerId}/events/{id}`.
+ * Room: таблица `event_table` (см. EventEntity).
+ *
+ * Время хранится как `LocalDateTime` (wall-clock, без таймзоны) — то, что
+ * видит пользователь. AlarmManager-планировщик
+ * [com.example.mycutieschedule.data.notification.EventReminderScheduler]
+ * преобразует его в epoch через `ZoneId.systemDefault` перед записью в alarm.
+ *
+ * @param id               Уникальный ID. Пустая строка = новое событие
+ *                         (UUID назначит AddEventUseCase).
+ * @param title            Короткое название для карточки события в календаре.
+ * @param description      Опциональное расширенное описание.
+ * @param startDateTime    Начало (включительно).
+ * @param endDateTime      Конец (исключая). Должно быть строго после [startDateTime].
+ * @param color            Один из предопределённых розовых оттенков.
+ * @param reminder         Опциональное напоминание (минут до начала + тип).
+ * @param recurrence       Опциональное правило повтора. Null = одиночное событие.
+ * @param ownerId          Firebase Auth UID создателя события (или viewer'а для
+ *                         импортированных — см. ShareRepositoryImpl).
+ * @param isImported       True если событие скопировано из чужого общего расписания.
+ * @param sourceScheduleId Share-код источника (только при [isImported] = true).
+ * @param recurrenceGroupId Общий ID всей цепочки повторений (мастер + сгенерированные).
+ *                          Null для одиночных событий.
+ * @param isRecurrenceGenerated True если событие автоматически сгенерировано
+ *                              из мастера повторов. У самого мастера = false.
+ * @param createdAt        Когда событие было создано.
+ * @param updatedAt        Время последнего изменения — используется для
+ *                         last-write-wins разрешения конфликтов при Firestore-sync.
  */
+@Stable
 data class Event(
     val id: String = "",
     val title: String,

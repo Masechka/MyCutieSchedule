@@ -19,24 +19,35 @@ import java.util.UUID
 import javax.inject.Inject
 
 /**
- * Implementation of [ShareRepository].
+ * Реализация [ShareRepository] — функциональность общих (расшаренных)
+ * расписаний.
  *
- * **Share code generation:**
- * A 6-character uppercase alphanumeric code is derived from a UUID.
- * The code is stored in two places:
- *   1. `sharedSchedules/{code}` — for fast O(1) lookups by code.
- *   2. `users/{userId}.shareCode` — so the user can display their own code.
+ * **Генерация share-кода:**
+ * 6-символьный буквенно-цифровой код в верхнем регистре, получаемый из UUID.
+ * Код хранится в двух местах:
+ *   1. `sharedSchedules/{code}` — для быстрого O(1) поиска по коду.
+ *   2. `users/{userId}.shareCode` — чтобы владелец мог видеть свой код
+ *      в профиле и копировать его.
  *
- * **Importing a schedule:**
- * Events from the owner's Firestore subcollection are downloaded and stored in
- * Room with `isImported = true` and `sourceScheduleId = shareCode`.
- * The import is a snapshot — changes made by the owner after import are NOT
- * automatically reflected (a future sync feature can address this).
+ * **Импорт расписания:**
+ * События из event-subcollection владельца скачиваются и сохраняются в
+ * локальной Room-БД с метками `isImported = true` и
+ * `sourceScheduleId = shareCode`.
+ * Кроме того, `ownerId` ПЕРЕЗАПИСЫВАЕТСЯ на ID viewer'а (того, кто
+ * импортирует) — это критически важно, потому что все календарные запросы
+ * фильтруют по `owner_id = currentUserId`. Без этого импортированные
+ * события не появлялись бы в основном календаре viewer'а.
+ *
+ * После импорта живая синхронизация изменений владельца ведётся отдельным
+ * сервисом — [com.example.mycutieschedule.data.sync.SharedSchedulesSyncManager].
  *
  * **observeImportedSchedules:**
- * Combines two Room Flows — SharedScheduleEntity list + imported EventEntity list.
- * Events are grouped by `sourceScheduleId` and re-attached to their schedule.
- * This is a pure Room-backed live stream; no Firestore calls are made here.
+ * Объединяет два Flow из Room: список `SharedScheduleEntity` (метаданные) +
+ * список импортированных `EventEntity`. События группируются по
+ * `sourceScheduleId` и прикрепляются к соответствующему расписанию.
+ * Это чистый поток на основе Room, без обращений к Firestore — данные
+ * актуальны столько, насколько свеж локальный кэш (обновляется
+ * SharedSchedulesSyncManager'ом).
  */
 class ShareRepositoryImpl @Inject constructor(
     private val sharedScheduleDao: SharedScheduleDao,

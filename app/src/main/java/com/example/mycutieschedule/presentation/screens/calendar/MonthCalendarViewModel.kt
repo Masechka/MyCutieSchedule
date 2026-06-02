@@ -20,11 +20,22 @@ import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
-// full intensity (≥ 520 min clamps to 1.0)
+// Максимум суммарной длительности событий за день для расчёта интенсивности.
+// 520 минут ≈ 8 ч 40 мин — обычный рабочий день. Любая нагрузка ≥ этого
+// значения отображается в Month View как 100% насыщенная ячейка.
 private const val INTENSITY_MAX_MINUTES = 520f
 
 // ── UI state ──────────────────────────────────────────────────────────────────
 
+/**
+ * State для экрана месячного календаря.
+ *
+ * @property currentYearMonth выбранный пользователем месяц (управляется свайпом ViewPager'а)
+ * @property eventsByDay      события, сгруппированные по дате — для рендера маркеров/чипов
+ * @property dayIntensity     карта «дата → интенсивность 0..1» для теплокарты нагрузки.
+ *                            Подмножество [eventsByDay] (после фильтра видимости/учёта в нагрузке).
+ * @property isLoading        true пока первый Flow-эмит ещё не пришёл
+ */
 data class MonthCalendarUiState(
     val currentYearMonth: YearMonth            = YearMonth.now(),
     val eventsByDay:      Map<LocalDate, List<Event>> = emptyMap(),
@@ -54,13 +65,22 @@ class MonthCalendarViewModel @Inject constructor(
                 getEventsForMonthUseCase(ym, userId),
                 shareRepository.observeImportedSchedules(userId),
             ) { events, sharedSchedules ->
-                // ── Compute per-imported-schedule filter sets ────────────────
-                // Visibility filter runs first → hidden schedules never affect
-                // either rendering or workload (spec: "hidden schedules should
-                // never affect workload").
-                // Among schedules that ARE visible, includeInWorkload controls
-                // whether the events count toward intensity. Events from those
-                // schedules still appear on the calendar.
+                // ── Расчёт фильтров по импортированным расписаниям ───────────
+                //
+                // Логика двухступенчатая:
+                //   1. Видимость (isVisibleInCalendar = false) → событие НЕ
+                //      отображается на календаре И НЕ участвует в расчёте
+                //      нагрузки. Скрытые расписания «как будто не существуют»
+                //      с точки зрения UI.
+                //   2. Учёт в нагрузке (includeInWorkload) — только для тех,
+                //      что прошли первый фильтр. Если false: событие
+                //      отображается, но интенсивность дня считается так,
+                //      будто его нет. Полезно для «факультативных» событий
+                //      типа дней рождений друзей — видеть хочется, а считать
+                //      как загрузку — нет.
+                //
+                // Личные события (isImported=false) фильтрами не затрагиваются
+                // никогда — оба условия проверяют `e.isImported && ...`.
                 val hiddenSourceIds = sharedSchedules
                     .filterNot { it.isVisibleInCalendar }
                     .map { it.id }
