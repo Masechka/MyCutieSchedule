@@ -5,6 +5,7 @@ import com.example.mycutieschedule.data.local.dao.EventDao
 import com.example.mycutieschedule.data.local.entity.EventEntity
 import com.example.mycutieschedule.data.mapper.toDomain
 import com.example.mycutieschedule.data.mapper.toEntity
+import com.example.mycutieschedule.data.notification.EventReminderScheduler
 import com.example.mycutieschedule.data.remote.api.FirestoreEventDataSource
 import com.example.mycutieschedule.di.ApplicationScope
 import com.example.mycutieschedule.domain.model.AuthState
@@ -66,6 +67,7 @@ class EventSyncManager @Inject constructor(
     private val authRepository: AuthRepository,
     private val eventDataSource: FirestoreEventDataSource,
     private val eventDao: EventDao,
+    private val reminderScheduler: EventReminderScheduler,
     @ApplicationScope private val appScope: CoroutineScope,
 ) {
 
@@ -200,6 +202,12 @@ class EventSyncManager @Inject constructor(
         }
         if (toUpsert.isNotEmpty()) {
             eventDao.insertAll(toUpsert)
+            // (Re-)schedule reminder alarms for every upserted event. This is
+            // how reminders propagate to *other* devices the user signed into:
+            // their EventSyncManager applies the snapshot, sees the reminder
+            // fields, and arms the local AlarmManager. Idempotent — calling
+            // schedule() with the same eventId replaces any prior alarm.
+            toUpsert.forEach { reminderScheduler.schedule(it.toDomain()) }
             Timber.d(
                 "EventSyncManager: upserted ${toUpsert.size} event(s) for userId=$userId"
             )
@@ -221,6 +229,9 @@ class EventSyncManager @Inject constructor(
 
             if (toDelete.isNotEmpty()) {
                 eventDao.deleteByIds(toDelete)
+                // Also kill any scheduled alarms for events the owner deleted
+                // on another device — otherwise we'd ring for a phantom event.
+                toDelete.forEach { reminderScheduler.cancel(it) }
                 Timber.d(
                     "EventSyncManager: deleted ${toDelete.size} event(s) " +
                         "(missing from Firestore) for userId=$userId"

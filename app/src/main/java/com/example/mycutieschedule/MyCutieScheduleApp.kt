@@ -1,6 +1,7 @@
 package com.example.mycutieschedule
 
 import android.app.Application
+import com.example.mycutieschedule.data.notification.ReminderNotificationChannel
 import com.example.mycutieschedule.data.sync.EventSyncManager
 import com.example.mycutieschedule.data.sync.SharedSchedulesSyncManager
 import dagger.hilt.android.HiltAndroidApp
@@ -22,9 +23,16 @@ class MyCutieScheduleApp : Application() {
     @Inject
     lateinit var sharedSchedulesSyncManager: SharedSchedulesSyncManager
 
+    /** Creates the notification channel before any reminder can be posted. */
+    @Inject
+    lateinit var reminderChannel: ReminderNotificationChannel
+
     override fun onCreate() {
         super.onCreate()
         initTimber()
+        // Channel must exist BEFORE any AlarmManager-driven receiver tries to
+        // post a notification. Creating it on every cold launch is idempotent.
+        reminderChannel.ensureCreated()
         syncManager.start()
         sharedSchedulesSyncManager.start()
     }

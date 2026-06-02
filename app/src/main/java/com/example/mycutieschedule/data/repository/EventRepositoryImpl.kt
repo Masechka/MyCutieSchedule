@@ -7,6 +7,7 @@ import com.example.mycutieschedule.data.local.dao.EventDao
 import com.example.mycutieschedule.data.mapper.toDomain
 import com.example.mycutieschedule.data.mapper.toDto
 import com.example.mycutieschedule.data.mapper.toEntity
+import com.example.mycutieschedule.data.notification.EventReminderScheduler
 import com.example.mycutieschedule.data.remote.api.FirestoreEventDataSource
 import com.example.mycutieschedule.di.ApplicationScope
 import com.example.mycutieschedule.domain.model.Event
@@ -39,6 +40,7 @@ import javax.inject.Inject
 class EventRepositoryImpl @Inject constructor(
     private val eventDao: EventDao,
     private val eventDataSource: FirestoreEventDataSource,
+    private val reminderScheduler: EventReminderScheduler,
     @ApplicationScope private val applicationScope: CoroutineScope,
 ) : EventRepository {
 
@@ -64,6 +66,7 @@ class EventRepositoryImpl @Inject constructor(
     /** Single-event insert — Firestore write is synchronous (fast, 1 call). */
     override suspend fun addEvent(event: Event): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) { eventDao.insert(event.toEntity()) }
+        reminderScheduler.schedule(event)
         writeToFirestore(event)
     }.toDomainResult()
 
@@ -78,6 +81,10 @@ class EventRepositoryImpl @Inject constructor(
         withContext(Dispatchers.IO) {
             eventDao.insertAll(events.map { it.toEntity() })
         }
+        // Schedule reminders for every generated occurrence. AlarmManager is
+        // cheap; scheduling N alarms is O(N) inside the receiver process and
+        // doesn't touch the network.
+        events.forEach { reminderScheduler.schedule(it) }
         // Fire-and-forget: application scope survives ViewModel/screen lifecycle.
         // launch() returns Job; trailing Unit keeps the lambda typed as () -> Unit.
         applicationScope.launch(Dispatchers.IO) {
@@ -89,6 +96,14 @@ class EventRepositoryImpl @Inject constructor(
     /** Single-event update — Firestore write is synchronous (fast, 1 call). */
     override suspend fun updateEvent(event: Event): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) { eventDao.update(event.toEntity()) }
+        // Re-schedule: handles add-reminder, remove-reminder, edit-time, and
+        // edit-minutesBefore uniformly. If event.reminder is null, schedule()
+        // returns early and the previous alarm is cancelled below.
+        if (event.reminder != null) {
+            reminderScheduler.schedule(event)
+        } else {
+            reminderScheduler.cancel(event.id)
+        }
         writeToFirestore(event)
     }.toDomainResult()
 
@@ -96,6 +111,7 @@ class EventRepositoryImpl @Inject constructor(
     override suspend fun deleteEvent(eventId: String): Result<Unit> = runCatching {
         val entity = withContext(Dispatchers.IO) { eventDao.findById(eventId) }
         withContext(Dispatchers.IO) { eventDao.deleteById(eventId) }
+        reminderScheduler.cancel(eventId)
         if (entity != null) deleteFromFirestore(eventId, entity.ownerId)
     }.toDomainResult()
 
@@ -118,6 +134,9 @@ class EventRepositoryImpl @Inject constructor(
         val toDelete = withContext(Dispatchers.IO) {
             eventDao.findAndDeleteByGroupIdFromDate(recurrenceGroupId, fromMilli)
         }
+        // Cancel reminder alarms for every deleted occurrence — otherwise we'd
+        // fire notifications for events the user just removed.
+        toDelete.forEach { entity -> reminderScheduler.cancel(entity.id) }
         // Fire-and-forget Firestore cleanup.
         // launch() returns Job; trailing Unit keeps the lambda typed as () -> Unit.
         applicationScope.launch(Dispatchers.IO) {

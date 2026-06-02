@@ -117,6 +117,21 @@ interface EventDao {
      * Used by [com.example.mycutieschedule.data.sync.SharedSchedulesSyncManager]
      * to diff the local mirror against the owner's latest Firestore snapshot.
      */
+    /**
+     * Every future event with an attached reminder, across all users.
+     * Used by [com.example.mycutieschedule.data.notification.BootCompletedReceiver]
+     * to re-arm alarms after device reboot. Filters out imported events because
+     * we never schedule notifications for events that belong to other users.
+     */
+    @Query("""
+        SELECT * FROM event_table
+        WHERE reminder_minutes_before IS NOT NULL
+          AND reminder_type           IS NOT NULL
+          AND start_datetime          >  :nowEpochMilli
+          AND is_imported             =  0
+    """)
+    suspend fun findEventsWithFutureReminders(nowEpochMilli: Long): List<EventEntity>
+
     @Query("""
         SELECT * FROM event_table
         WHERE source_schedule_id = :sourceScheduleId
