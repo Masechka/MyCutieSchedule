@@ -1,9 +1,13 @@
 package com.example.mycutieschedule.presentation
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -67,6 +71,21 @@ fun AppContent(
     }
 
     MyCutieScheduleTheme(darkTheme = useDarkTheme) {
-        AppNavGraph(navController = navController)
+        // Surface fills the entire content area with the active theme's
+        // background colour BEFORE the NavHost renders any screen. Without
+        // this, Navigation Compose's slide transitions briefly expose the
+        // Activity's windowBackground (a hardcoded light-pink splash
+        // drawable) — which reads as a "pink flash" in dark theme between
+        // sliding screens.
+        //
+        // With the Surface in place the area under the NavHost is always
+        // theme-correct, so any uncovered region during a transition shows
+        // the right dark background instead.
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color    = MaterialTheme.colorScheme.background,
+        ) {
+            AppNavGraph(navController = navController)
+        }
     }
 }

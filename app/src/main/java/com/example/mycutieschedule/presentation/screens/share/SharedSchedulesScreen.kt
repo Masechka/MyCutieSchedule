@@ -410,33 +410,14 @@ private fun ImportedScheduleCard(
 
 @Composable
 private fun EmptySchedulesState() {
-    Column(
-        modifier            = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 32.dp, horizontal = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector        = Icons.Outlined.Share,
-            contentDescription = null,
-            tint               = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-            modifier           = Modifier.size(56.dp),
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text      = "У вас пока нет добавленных расписаний",
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center,
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text      = "Введите код, который вам прислали, чтобы добавить чьё-то расписание",
-            style     = MaterialTheme.typography.bodySmall,
-            color     = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            textAlign = TextAlign.Center,
-        )
-    }
+    // Migrated to the shared EmptyState component for visual consistency with
+    // every other empty placeholder in the app (animated entry, primary-tinted
+    // icon badge, consistent typography). Same content, less code.
+    com.example.mycutieschedule.presentation.components.EmptyState(
+        icon     = Icons.Outlined.Share,
+        title    = "У вас пока нет добавленных расписаний",
+        subtitle = "Введите код, который вам прислали, чтобы добавить чьё-то расписание",
+    )
 }
 
 @Composable
