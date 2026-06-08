@@ -2,6 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Required by Firebase (Auth, Firestore). Declared explicitly so it is
+         visible in the merged manifest report and not just inherited from Firebase. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Notifications & reminder scheduling (Stage 14).
+         - POST_NOTIFICATIONS    : Android 13+ runtime permission for any notification.
+         - RECEIVE_BOOT_COMPLETED: lets BootCompletedReceiver re-arm pending reminder
+                                   alarms after the device reboots (alarms are lost on boot).
+         - USE_EXACT_ALARM       : Android 13+ auto-granted permission specifically for
+                                   calendar/alarm/reminder apps — no runtime prompt.
+         - SCHEDULE_EXACT_ALARM  : Android 12 fallback; the user may revoke this in
+                                   Settings, in which case we silently degrade to
+                                   setAndAllowWhileIdle (still works, just inexact). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
     <application
         android:name=".MyCutieScheduleApp"
         android:allowBackup="true"
@@ -23,6 +42,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ============================================================ -->
+        <!--  Reminder infrastructure                                      -->
+        <!-- ============================================================ -->
+
+        <!-- Fires when AlarmManager triggers a scheduled reminder.
+             Not exported — only the system AlarmManager + our own app can
+             deliver intents to it. -->
+        <receiver
+            android:name=".data.notification.ReminderReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Re-schedules every future reminder after device boot, since
+             AlarmManager state does NOT survive shutdown. Must be exported
+             to receive system BOOT_COMPLETED. -->
+        <receiver
+            android:name=".data.notification.BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

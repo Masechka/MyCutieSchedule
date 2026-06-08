@@ -43,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -50,6 +51,8 @@ dependencies {
     // Core / Compose
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // collectAsStateWithLifecycle() — lifecycle-aware StateFlow → Compose State
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
@@ -57,6 +60,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    // Extended Material icons (Visibility, VisibilityOff, Email, etc.)
+    implementation(libs.androidx.compose.material.icons.extended)
 
     // Navigation
     implementation(libs.androidx.navigation.compose)
@@ -81,6 +86,8 @@ dependencies {
 
     // Coroutines & Serialization
     implementation(libs.kotlinx.coroutines.android)
+    // Task.await() — bridges Firebase's Task<T> into coroutines
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.serialization.json)
 
     // Logging

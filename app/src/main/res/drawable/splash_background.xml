@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Splash background — shown for the brief moment between launcher tap and
+    Compose taking over. Matches PinkLight theme's background (Pink50 #FFF0F5)
+    and centers a heart silhouette in brand-pink (Pink500 #E91E8C) so users
+    don't see a white flash.
+
+    NOTE: this drawable is used for ALL themes (pink / leopard / pink-leopard).
+    The user only sees it for <1 second before Compose paints the real theme,
+    so we accept a slight mismatch on non-pink themes rather than wiring a
+    per-theme splash resource (which would require manifest activity-aliases).
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFF0F5" />
+        </shape>
+    </item>
+
+    <item
+        android:gravity="center"
+        android:width="120dp"
+        android:height="120dp">
+        <vector
+            android:width="120dp"
+            android:height="120dp"
+            android:viewportWidth="120"
+            android:viewportHeight="120">
+            <!-- Heart silhouette in brand pink -->
+            <path
+                android:fillColor="#E91E8C"
+                android:pathData="M60,95 C60,95 22,72 22,46 C22,33 32,24 44,24 C50,24 56,27 60,32 C64,27 70,24 76,24 C88,24 98,33 98,46 C98,72 60,95 60,95 Z" />
+        </vector>
+    </item>
+</layer-list>

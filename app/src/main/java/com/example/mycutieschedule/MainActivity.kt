@@ -1,32 +1,53 @@
 package com.example.mycutieschedule
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import com.example.mycutieschedule.presentation.theme.MyCutieScheduleTheme
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
+import com.example.mycutieschedule.presentation.AppContent
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    /**
+     * Request handle for the POST_NOTIFICATIONS runtime permission (Android 13+).
+     * Result is intentionally ignored — denial is non-fatal, the app still works
+     * but reminders silently no-op until the user grants the permission via
+     * system Settings.
+     */
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* ignore */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        maybeRequestNotificationPermission()
         setContent {
-            MyCutieScheduleTheme {
-                // TODO Stage 5: replace with NavHost once navigation graph is wired up
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = "My Cutie Schedule 🩷")
-                }
-            }
+            AppContent()
+        }
+    }
+
+    /**
+     * On Android 13+ apps must request POST_NOTIFICATIONS at runtime to show
+     * any notification. We ask on first launch; if the user denies we don't
+     * pester them again — they can re-enable from system Settings.
+     *
+     * Pre-13 devices auto-grant via the manifest declaration, so no prompt
+     * is shown.
+     */
+    private fun maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ActivityCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MyCutieSchedule" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+        App theme — kept as a no-action-bar Material parent. Compose owns the
+        actual UI styling via MyCutieScheduleTheme.
+
+        windowBackground points at a pink splash drawable so the launch window
+        (the very first frame after tap, before the Activity's setContent
+        runs) matches the brand palette instead of flashing white.
+    -->
+    <style name="Theme.MyCutieSchedule" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
 </resources>

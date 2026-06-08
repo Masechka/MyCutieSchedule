@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Dark-theme splash background.
+
+    Picked when the system is in dark mode (the only signal available at
+    process-start time, before Compose runs). After Compose mounts, AppContent's
+    Surface takes over and applies the user-chosen DataStore theme.
+
+    Base: DarkSurface1 (#1E1018) — matches DarkColorScheme.background so the
+    splash blends seamlessly into the rendered dark app.
+    Heart: Pink300 (#FF80C0) — matches DarkColorScheme.primary, the brand
+    accent in dark mode.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1E1018" />
+        </shape>
+    </item>
+
+    <item
+        android:gravity="center"
+        android:width="120dp"
+        android:height="120dp">
+        <vector
+            android:width="120dp"
+            android:height="120dp"
+            android:viewportWidth="120"
+            android:viewportHeight="120">
+            <path
+                android:fillColor="#FF80C0"
+                android:pathData="M60,95 C60,95 22,72 22,46 C22,33 32,24 44,24 C50,24 56,27 60,32 C64,27 70,24 76,24 C88,24 98,33 98,46 C98,72 60,95 60,95 Z" />
+        </vector>
+    </item>
+</layer-list>
