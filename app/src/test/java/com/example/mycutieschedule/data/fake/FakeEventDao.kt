@@ -5,6 +5,7 @@ import com.example.mycutieschedule.data.local.entity.EventEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * In-memory fake for [EventDao] — no Room, no SQLite, no Android runtime.
@@ -13,24 +14,54 @@ import kotlinx.coroutines.flow.map
  * test that depends on filter semantics (e.g. the boot-time "future reminders"
  * filter) exercises the same predicate the database would apply.
  *
- * Test hook:
- *   [lastFutureRemindersArg] records the `nowEpochMilli` bound the production
- *   code passed in — useful when a failure needs diagnosing, since a wrong
- *   time base shows up as an offset there.
+ * Thread-safe: [com.example.mycutieschedule.data.sync.EventSyncManager] applies
+ * snapshots on [kotlinx.coroutines.Dispatchers.IO], i.e. not on the test thread,
+ * so every mutation takes [lock] and the read-modify-write on [eventsFlow] never
+ * races.
+ *
+ * Test hooks:
+ *   - [lastFutureRemindersArg] records the `nowEpochMilli` bound the production
+ *     code passed in — a wrong time base shows up there as an offset.
+ *   - [snapshotReads], [deletedIds] and [insertedIds] record what the sync path
+ *     actually did, so a test can assert on behaviour instead of only on state.
+ *
+ * @param initial rows the table starts with.
  */
-class FakeEventDao : EventDao {
+class FakeEventDao(initial: List<EventEntity> = emptyList()) : EventDao {
 
-    private val eventsFlow = MutableStateFlow<List<EventEntity>>(emptyList())
+    private val lock = Any()
+    private val eventsFlow = MutableStateFlow(initial)
+
+    private val _snapshotReads = AtomicInteger(0)
+    private val _deletedIds = mutableListOf<String>()
+    private val _insertedIds = mutableListOf<String>()
 
     /** All rows currently in the fake table. */
     val events: List<EventEntity> get() = eventsFlow.value
+
+    /** How many times the sync path read the local snapshot. */
+    val snapshotReads: Int get() = _snapshotReads.get()
+
+    /** Ids removed by any delete path, in call order. */
+    val deletedIds: List<String> get() = synchronized(lock) { _deletedIds.toList() }
+
+    /** Ids written by [insert] / [insertAll], in call order. */
+    val insertedIds: List<String> get() = synchronized(lock) { _insertedIds.toList() }
 
     /** Bound most recently passed to [findEventsWithFutureReminders], or null. */
     var lastFutureRemindersArg: Long? = null
         private set
 
-    fun seed(vararg entities: EventEntity) {
+    fun seed(vararg entities: EventEntity) = synchronized(lock) {
         eventsFlow.value = eventsFlow.value + entities
+    }
+
+    /** Removes [ids] and records them, under [lock]. Callers must hold nothing. */
+    private fun removeRecording(ids: List<String>) = synchronized(lock) {
+        if (ids.isEmpty()) return@synchronized
+        _deletedIds += ids
+        val doomed = ids.toSet()
+        eventsFlow.value = eventsFlow.value.filterNot { it.id in doomed }
     }
 
     // ── Range queries ─────────────────────────────────────────────────────────
@@ -73,12 +104,12 @@ class FakeEventDao : EventDao {
 
     // ── Sync helpers ──────────────────────────────────────────────────────────
 
-    override suspend fun findAllOwnedByUser(userId: String): List<EventEntity> =
-        eventsFlow.value.filter { it.ownerId == userId && !it.isImported }
-
-    override suspend fun deleteByIds(eventIds: List<String>) {
-        eventsFlow.value = eventsFlow.value.filterNot { it.id in eventIds }
+    override suspend fun findAllOwnedByUser(userId: String): List<EventEntity> {
+        _snapshotReads.incrementAndGet()
+        return eventsFlow.value.filter { it.ownerId == userId && !it.isImported }
     }
+
+    override suspend fun deleteByIds(eventIds: List<String>) = removeRecording(eventIds)
 
     /**
      * Mirrors the real query:
@@ -109,11 +140,8 @@ class FakeEventDao : EventDao {
         it.recurrenceGroupId == groupId && it.startDatetime >= fromStartMilli
     }
 
-    override suspend fun deleteByGroupIdFromDate(groupId: String, fromStartMilli: Long) {
-        eventsFlow.value = eventsFlow.value.filterNot {
-            it.recurrenceGroupId == groupId && it.startDatetime >= fromStartMilli
-        }
-    }
+    override suspend fun deleteByGroupIdFromDate(groupId: String, fromStartMilli: Long) =
+        removeRecording(findByGroupIdFromDate(groupId, fromStartMilli).map { it.id })
 
     // ── Single-item lookup ────────────────────────────────────────────────────
 
@@ -124,21 +152,19 @@ class FakeEventDao : EventDao {
 
     override suspend fun insert(event: EventEntity) = insertAll(listOf(event))
 
-    override suspend fun insertAll(events: List<EventEntity>) {
+    override suspend fun insertAll(events: List<EventEntity>) = synchronized(lock) {
         // REPLACE-on-conflict semantics: incoming rows win on matching id.
         val incomingIds = events.map { it.id }.toSet()
+        _insertedIds += events.map { it.id }
         eventsFlow.value = eventsFlow.value.filterNot { it.id in incomingIds } + events
     }
 
-    override suspend fun update(event: EventEntity) {
+    override suspend fun update(event: EventEntity) = synchronized(lock) {
         eventsFlow.value = eventsFlow.value.map { if (it.id == event.id) event else it }
     }
 
-    override suspend fun deleteById(eventId: String) {
-        eventsFlow.value = eventsFlow.value.filterNot { it.id == eventId }
-    }
+    override suspend fun deleteById(eventId: String) = removeRecording(listOf(eventId))
 
-    override suspend fun deleteBySourceScheduleId(scheduleId: String) {
-        eventsFlow.value = eventsFlow.value.filterNot { it.sourceScheduleId == scheduleId }
-    }
+    override suspend fun deleteBySourceScheduleId(scheduleId: String) =
+        removeRecording(eventsFlow.value.filter { it.sourceScheduleId == scheduleId }.map { it.id })
 }

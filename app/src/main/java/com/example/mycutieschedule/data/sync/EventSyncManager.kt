@@ -1,5 +1,6 @@
 package com.example.mycutieschedule.data.sync
 
+import com.example.mycutieschedule.core.extensions.toEpochMilli
 import com.example.mycutieschedule.core.util.Result
 import com.example.mycutieschedule.data.local.dao.EventDao
 import com.example.mycutieschedule.data.local.entity.EventEntity
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -232,7 +234,13 @@ class EventSyncManager @Inject constructor(
         // arrived yet (or a permission-denied write that should stay visible
         // to the user until they can react).
         if (allowDeletions) {
-            val nowMillis = System.currentTimeMillis()
+            // ВАЖНО: `updatedAt` — не настоящий UTC-epoch. Сущности пишут его
+            // как `LocalDateTime.now().toEpochMilli()`, то есть настенное время
+            // системной зоны, интерпретированное как UTC. «Сейчас» обязано
+            // считаться в той же базе, иначе разница уезжает ровно на offset
+            // зоны: восточнее UTC она уходит в минус и удаления не доезжают
+            // никогда, западнее — раздувается на часы и окно не защищает вовсе.
+            val nowMillis = LocalDateTime.now().toEpochMilli()
             val toDelete = localEntities
                 .filter { local ->
                     local.id !in remoteMap &&
