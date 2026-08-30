@@ -47,6 +47,12 @@ class FakeEventRepository : EventRepository {
         return Result.Success(Unit)
     }
 
+    override suspend fun addAllEvents(events: List<Event>): Result<Unit> {
+        shouldFailWith?.let { return Result.Error(it).also { shouldFailWith = null } }
+        eventsFlow.value = eventsFlow.value + events
+        return Result.Success(Unit)
+    }
+
     override suspend fun updateEvent(event: Event): Result<Unit> {
         shouldFailWith?.let { return Result.Error(it).also { shouldFailWith = null } }
         eventsFlow.value = eventsFlow.value.map {
@@ -58,6 +64,17 @@ class FakeEventRepository : EventRepository {
     override suspend fun deleteEvent(eventId: String): Result<Unit> {
         shouldFailWith?.let { return Result.Error(it).also { shouldFailWith = null } }
         eventsFlow.value = eventsFlow.value.filter { it.id != eventId }
+        return Result.Success(Unit)
+    }
+
+    override suspend fun deleteEventAndFollowing(
+        recurrenceGroupId: String,
+        fromStart: LocalDateTime,
+    ): Result<Unit> {
+        shouldFailWith?.let { return Result.Error(it).also { shouldFailWith = null } }
+        eventsFlow.value = eventsFlow.value.filterNot { event ->
+            event.recurrenceGroupId == recurrenceGroupId && event.startDateTime >= fromStart
+        }
         return Result.Success(Unit)
     }
 }

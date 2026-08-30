@@ -13,3 +13,7 @@ local.properties
 *.aab
 *.keystore
 *.jks
+
+# Claude Code — machine-specific settings (JAVA_HOME etc.)
+.claude/settings.local.json
+CLAUDE.local.md
